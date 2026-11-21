@@ -1,5 +1,7 @@
 package com.appgrowstack.campaign
 
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 import kotlin.math.round
 import kotlin.math.sqrt
 
@@ -9,7 +11,12 @@ import kotlin.math.sqrt
  * of them must give.
  */
 public object Experiment {
-    public enum class Side(public val code: String) { TREATMENT("treatment"), HOLDOUT("holdout") }
+    /** Which side of a campaign's holdout a person is on. Kept as its [code] (`treatment`, `holdout`). */
+    @Serializable
+    public enum class Side(public val code: String) {
+        @SerialName("treatment") TREATMENT("treatment"),
+        @SerialName("holdout") HOLDOUT("holdout"),
+    }
 
     public data class Assignment(val unit: Double, val side: Side)
 

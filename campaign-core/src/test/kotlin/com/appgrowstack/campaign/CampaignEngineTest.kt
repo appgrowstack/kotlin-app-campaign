@@ -5,6 +5,7 @@ import com.appgrowstack.campaign.testing.FakeCampaignClock
 import com.appgrowstack.campaign.testing.FakeCampaignSetFetcher
 import com.appgrowstack.campaign.testing.FakeImagePrefetcher
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -16,6 +17,8 @@ import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import java.io.File
 import java.time.ZoneId
+import java.util.concurrent.CountDownLatch
+import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
@@ -75,7 +78,7 @@ class CampaignEngineTest {
         val clock = FakeCampaignClock(start)
         val recorder = CampaignEventRecorder()
         val reviews = mutableListOf<CampaignActionRequest>()
-        val trials = mutableListOf<CampaignActionRequest>()
+        val trials: MutableList<CampaignActionRequest> = java.util.concurrent.CopyOnWriteArrayList()
         /** Thrown by start_trial when set (the action's coroutine was cancelled, a failing action). */
         var trialThrows: Exception? = null
         val context = CampaignContext("3.3.0", "330", "play", "ja", "JP", ZoneId.of("Asia/Tokyo"), firstSeenAt = firstSeenAt)
@@ -185,6 +188,59 @@ class CampaignEngineTest {
         assertEquals(CampaignValue.of("holdout"), eligible.params["side"])
         assertEquals(1, h.engine.history.record("trial-2days-after-feature").shownCount)
         assertTrue(h.engine.history.shownAt.isEmpty())
+    }
+
+    /** [caseSet] with every campaign's holdout set to [holdout]. */
+    private fun withHoldout(name: String, holdout: Double): String = caseSet(name) { set ->
+        JsonObject(set + ("campaigns" to JsonArray(set.getValue("campaigns").jsonArray.map { campaign ->
+            JsonObject(campaign.jsonObject + ("holdout" to JsonPrimitive(holdout)))
+        })))
+    }
+
+    @Test
+    fun aSideOnceDecidedStaysWhenTheHoldoutChanges() = runTest {
+        val h = Harness(person = "user-1")
+        h.load(caseSet("show-after-paywall"))
+        h.engine.receive(paywallClosed)
+        assertEquals(mapOf("trial-2days-after-feature" to Experiment.Side.HOLDOUT), h.engine.sides)
+        assertEquals(mapOf("trial-2days-after-feature" to Experiment.Side.HOLDOUT), h.storage.loadState()?.sides)
+
+        // No one is held out by the new set's share, but this person's side was already decided.
+        h.clock.advance(25 * 3_600_000L)
+        h.load(withHoldout("show-after-paywall", 0.0))
+        h.engine.receive(paywallClosed)
+
+        assertNull(h.engine.presenting.value)
+        assertEquals(listOf(CampaignValue.of("holdout"), CampaignValue.of("holdout")), h.recorder.named("campaign_eligible").map { it.params["side"] })
+    }
+
+    @Test
+    fun theSideIsKeptAsTheSwiftSdkKeepsIt() {
+        val state = CampaignStoredState(firstSeenAt = 0, sides = mapOf("a" to Experiment.Side.HOLDOUT, "b" to Experiment.Side.TREATMENT))
+        val text = Json.encodeToString(CampaignStoredState.serializer(), state)
+        assertTrue(""""sides":{"a":"holdout","b":"treatment"}""" in text, text)
+        assertEquals(state, Json.decodeFromString(CampaignStoredState.serializer(), text))
+    }
+
+    @Test
+    fun aTapAndADismissalAtOnceRecordOnlyOne() = runBlocking {
+        repeat(300) { round ->
+            val h = Harness()
+            h.load(caseSet("show-after-paywall"))
+            h.engine.receive(paywallClosed)
+            val presentation = assertNotNull(h.engine.presenting.value)
+            val go = CountDownLatch(1)
+            val callers = listOf(
+                thread { go.await(); runBlocking { h.engine.tap(presentation) } },
+                thread { go.await(); runBlocking { h.engine.dismiss(presentation, CampaignDismissal.SECONDARY) } },
+                thread { go.await(); runBlocking { h.engine.tap(presentation) } },
+            )
+            go.countDown()
+            callers.forEach { it.join() }
+            val closed = h.recorder.events.count { it.name == "campaign_tapped" || it.name == "campaign_dismissed" }
+            assertEquals(1, closed, "round $round: ${h.recorder.events.map { it.name }}")
+            assertTrue(h.trials.size <= 1, "round $round: the action ran ${h.trials.size} times")
+        }
     }
 
     @Test

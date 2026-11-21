@@ -22,6 +22,8 @@ public data class CampaignDecisionInput(
     val texts: (String) -> String? = { null },
     /** HTTPS images already fetched. */
     val imagesReady: Set<String> = emptySet(),
+    /** Sides already decided on this device. A side, once decided, does not change. */
+    val sides: Map<String, Experiment.Side> = emptyMap(),
 )
 
 public data class CampaignSelection(
@@ -39,9 +41,11 @@ public data class CampaignDecision(
     val records: List<CampaignEvent>,
     /** The server facts that were asked for, in order. */
     val serverFactsRead: List<String>,
-    /** Campaigns held out, so the caller can count their turn. */
-    val heldOut: List<String>,
-)
+    /** Every campaign that passed step 8, with its side. Held-out ones count as shown. */
+    val eligible: List<Eligible>,
+) {
+    public data class Eligible(val campaign: String, val trigger: String, val side: Experiment.Side)
+}
 
 /** After waiting: show, or why not (C4). */
 public sealed interface CampaignRecheck {
@@ -62,7 +66,7 @@ public object CampaignRules {
         val version = set.version
         val outcomes = linkedMapOf<String, CampaignOutcome>()
         val records = mutableListOf<CampaignEvent>()
-        val heldOut = mutableListOf<String>()
+        val eligible = mutableListOf<CampaignDecision.Eligible>()
 
         val age = input.now - input.fetchedAt
         if (age > set.policy.cacheHours * 3_600_000) {
@@ -99,11 +103,11 @@ public object CampaignRules {
                 }
             }
 
-            val side = Experiment.assign(set.project, input.person, campaign.id, campaign.holdout, input.context.internalDevice).side
+            val side = side(campaign, input)
             records.add(CampaignEvent.eligible(campaign.id, version, trigger.id, side))
+            eligible.add(CampaignDecision.Eligible(campaign.id, trigger.id, side))
             if (side == Experiment.Side.HOLDOUT) {
                 outcomes[campaign.id] = CampaignOutcome.HeldOut
-                heldOut.add(campaign.id)
                 continue
             }
             candidates.add(campaign to trigger)
@@ -111,7 +115,7 @@ public object CampaignRules {
 
         val sorted = candidates.sortedWith { a, b -> compareRank(a.first, b.first) }
         val winner = sorted.firstOrNull()
-            ?: return CampaignDecision(null, outcomes, records, reader.serverRead.toList(), heldOut)
+            ?: return CampaignDecision(null, outcomes, records, reader.serverRead.toList(), eligible)
         for ((loser, loserTrigger) in sorted.drop(1)) {
             outcomes[loser.id] = CampaignOutcome.Skipped(CampaignSkipReason.LOWER_PRIORITY)
             records.add(CampaignEvent.skipped(loser.id, version, loserTrigger.id, CampaignSkipReason.LOWER_PRIORITY))
@@ -128,7 +132,7 @@ public object CampaignRules {
                 records.add(CampaignEvent.skipped(campaign.id, version, trigger.id, values.reason))
             }
         }
-        return CampaignDecision(shown, outcomes, records, reader.serverRead.toList(), heldOut)
+        return CampaignDecision(shown, outcomes, records, reader.serverRead.toList(), eligible)
     }
 
     /**
@@ -169,6 +173,16 @@ public object CampaignRules {
         val r = rhs.startsAt ?: Long.MIN_VALUE
         if (l != r) return r.compareTo(l)
         return lhs.id.compareTo(rhs.id)
+    }
+
+    /**
+     * The side of a campaign's holdout: the owner's device is always shown; a side decided earlier
+     * stays; otherwise `hash32("<project>:<person>:<campaign>:holdout") / 2^32 < holdout`.
+     */
+    private fun side(campaign: Campaign, input: CampaignDecisionInput): Experiment.Side {
+        if (input.context.internalDevice) return Experiment.Side.TREATMENT
+        input.sides[campaign.id]?.let { return it }
+        return Experiment.assign(input.set.project, input.person, campaign.id, campaign.holdout, internal = false).side
     }
 
     private fun matchTrigger(campaign: Campaign, event: ObservedEvent): Pair<CampaignTrigger?, Boolean> {

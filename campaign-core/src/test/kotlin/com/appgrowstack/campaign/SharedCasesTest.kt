@@ -211,6 +211,9 @@ object CaseRunner {
             ),
             texts = { texts[it] },
             imagesReady = json.getValue("images_ready").jsonArray.map { it.jsonPrimitive.content }.toSet(),
+            sides = json["sides"]?.jsonObject.orEmpty().mapValues { (_, side) ->
+                Experiment.Side.entries.first { it.code == side.jsonPrimitive.content }
+            },
         )
 
         val decision = CampaignRules.decide(input) { facts[it] }

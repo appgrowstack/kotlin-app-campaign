@@ -27,6 +27,8 @@ public data class CampaignStoredState(
     val staleReportedVersion: Int? = null,
     /** The app version of the last launch, for `app_updated`. */
     val lastAppVersion: String? = null,
+    /** Holdout sides decided on this device. Once decided, a side does not change. */
+    val sides: Map<String, Experiment.Side> = emptyMap(),
 )
 
 public interface CampaignStorage {

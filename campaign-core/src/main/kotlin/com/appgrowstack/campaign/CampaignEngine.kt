@@ -173,7 +173,15 @@ public class CampaignEngine(
                 }
             }
             val now = clock.now()
-            for (held in decision.heldOut) next = next.copy(history = next.history.counting(held, now, context.appVersion))
+            for (eligible in decision.eligible) {
+                // The owner's device is always shown and never remembers a side.
+                if (!context.internalDevice && eligible.campaign !in next.sides) {
+                    next = next.copy(sides = next.sides + (eligible.campaign to eligible.side))
+                }
+                if (eligible.side == Experiment.Side.HOLDOUT) {
+                    next = next.copy(history = next.history.counting(eligible.campaign, now, context.appVersion))
+                }
+            }
             state = next
             storage.saveState(next)
             decision.shown
@@ -189,6 +197,7 @@ public class CampaignEngine(
             set = set, registry = registry, fetchedAt = fetchedAt, now = now, context = context, person = person(),
             daysSinceFirstSeen = days(state.firstSeenAt, now), history = state.history, sessionShown = sessionShown,
             event = event, sessionSeconds = (now - launchedAt) / 1000, texts = texts, imagesReady = imageCache.snapshot(),
+            sides = state.sides,
         )
     }
 
@@ -292,8 +301,7 @@ public class CampaignEngine(
 
     /** The primary button. Closes the placement, then runs the action or opens the link. */
     public suspend fun tap(presentation: CampaignPresentation) {
-        if (presentingFlow.value?.id != presentation.id) return
-        presentingFlow.value = null
+        if (!close(presentation)) return
         val target = if (presentation.onTap is CampaignTap.Link) "link" else "action"
         record(CampaignEvent.tapped(presentation.campaign, presentation.setVersion, presentation.trigger, target))
         complete(presentation)
@@ -322,8 +330,7 @@ public class CampaignEngine(
      * is ignored. Send what was written with the support connector's feedback call.
      */
     public suspend fun answer(presentation: CampaignPresentation, choice: String) {
-        if (presentingFlow.value?.id != presentation.id || !CampaignSurvey.isChoice(choice, presentation.values)) return
-        presentingFlow.value = null
+        if (!CampaignSurvey.isChoice(choice, presentation.values) || !close(presentation)) return
         record(CampaignEvent("survey_answered", mapOf(
             "campaign" to CampaignValue.of(presentation.campaign),
             "set_version" to CampaignValue.of(presentation.setVersion),
@@ -335,10 +342,19 @@ public class CampaignEngine(
 
     /** Any way of closing without the primary button. */
     public suspend fun dismiss(presentation: CampaignPresentation, via: CampaignDismissal) {
-        if (presentingFlow.value?.id != presentation.id) return
-        presentingFlow.value = null
+        if (!close(presentation)) return
         record(CampaignEvent.dismissed(presentation.campaign, presentation.setVersion, presentation.trigger, via))
         update { it.updating(presentation.campaign) { record -> record.copy(dismissedAt = clock.now()) } }
+    }
+
+    /**
+     * Takes [presentation] off the screen. `true` for exactly one caller: a tap, an answer and a
+     * dismissal that arrive together (two threads, a double tap) record only the first.
+     */
+    private fun close(presentation: CampaignPresentation): Boolean {
+        val current = presentingFlow.value ?: return false
+        if (current.id != presentation.id) return false
+        return presentingFlow.compareAndSet(current, null)
     }
 
     private suspend fun update(change: (CampaignHistory) -> CampaignHistory) = mutex.withLock {
@@ -400,6 +416,9 @@ public class CampaignEngine(
 
     /** The counts on hand (debug screens and tests). */
     public val history: CampaignHistory get() = state?.history ?: CampaignHistory()
+
+    /** The holdout sides decided on this device (debug screens and tests). */
+    public val sides: Map<String, Experiment.Side> get() = state?.sides ?: emptyMap()
 
     private fun days(start: Long, end: Long): Int {
         val zone = context.timeZone

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **Breaking.** `CampaignDecision.heldOut` is replaced by `CampaignDecision.eligible`
+  (`Eligible(campaign, trigger, side)` for every campaign that passed the holdout step), the same as
+  the Swift SDK. `CampaignDecisionInput(sides = …)` takes the sides already decided on the device.
+
+### Fixed
+
+- A holdout side, once decided on this device, is kept in `CampaignStoredState.sides` and does not
+  change when the set's holdout share changes (it was hashed again on every decision, so changing the
+  share moved Android people between sides). The owner's device never keeps a side.
+  `CampaignEngine.sides` shows them. `Experiment.Side` is stored as `treatment` / `holdout`, as the
+  Swift SDK stores it.
+- A tap, a survey answer and a dismissal of the same presentation that arrive together (two threads,
+  a double tap) record and run only the first. The others are ignored.
+
 ## [0.4.0] - 2026-11-22
 
 ### Added
