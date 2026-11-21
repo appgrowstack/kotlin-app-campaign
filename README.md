@@ -34,6 +34,8 @@ Android and lands on the same holdout side.
 - **Fails closed.** Offline, the set on hand is used for `cache_hours`, then nothing is shown. A
   broken set keeps the previous one. An unknown placement, action, fact, operator, target or a wrong
   type skips that campaign and is reported once as `campaign_rejected`
+- **Works on its own.** `BundledCampaignSetFetcher` reads the set shipped in the app. Any
+  `CampaignSetFetcher` can fetch it from a server instead
 - **No Android dependency in the core.** `campaign-core` is Kotlin/JVM (coroutines and
   kotlinx.serialization), so headless tests run it with `./gradlew test`
 
@@ -59,7 +61,6 @@ val trialOffer = CampaignPlacement.of(
 )
 
 val campaigns = CampaignEngine(
-    projectKey = "pk_…",
     context = CampaignContext(appVersion, build, channel = "play", lang, region),
     person = { personId },
     placements = listOf(trialOffer, CampaignPlacement.system("review_ask")),
@@ -73,6 +74,8 @@ val campaigns = CampaignEngine(
     ),
     storage = FileCampaignStorage(context.filesDir),
     record = { event -> analytics.track(event.name, event.params) },
+    // the set shipped in the app's assets (app-growth campaigns bundle writes it)
+    fetcher = BundledCampaignSetFetcher { assets.open("campaigns.json").bufferedReader().use { it.readText() } },
     texts = { key -> strings[key] },
     isBusy = { router.hasFullScreen },
 )

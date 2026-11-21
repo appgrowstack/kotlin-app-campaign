@@ -87,41 +87,25 @@ public fun interface CampaignSetFetcher {
     public suspend fun fetch(etag: String?): CampaignFetchResult
 }
 
+/** A fetch that got an answer other than a set or "not modified". */
+public class CampaignSetFetchFailure(public val status: Int) : Exception("campaign set: HTTP $status")
+
 /**
- * `GET <endpoint><public key>` with `If-None-Match` (`api.appgrowstack.com`) and the
- * `AppGrowStack-Client` header [client] (build it with [CampaignSdk.client]).
+ * The set shipped in the app (`app-growth campaigns bundle <project> --out <path>` writes it from
+ * the app's `campaigns/`; put it in the app's assets). Works with no server. To change what is
+ * shown, ship a new build.
+ *
+ * @param load reads the JSON, e.g. `{ context.assets.open("campaigns.json").bufferedReader().use { it.readText() } }`.
+ *   Read once, on the first fetch.
  */
-public class HttpCampaignSetFetcher(
-    projectKey: String,
-    public val client: String,
-    endpoint: String = DEFAULT_ENDPOINT,
-    private val timeoutMillis: Int = 15_000,
-) : CampaignSetFetcher {
-    public val url: String = endpoint.trimEnd('/') + "/" + projectKey
+public class BundledCampaignSetFetcher(private val load: () -> String) : CampaignSetFetcher {
+    private val text: String by lazy(load)
 
-    public class Failure(public val status: Int) : Exception("campaign set: HTTP $status")
+    /** `"bundled-<hash of the text>"`: the same file gives the same tag on every launch. */
+    public val etag: String get() = "\"bundled-${Integer.toHexString(text.hashCode())}\""
 
-    override suspend fun fetch(etag: String?): CampaignFetchResult = withContext(Dispatchers.IO) {
-        val connection = URI(url).toURL().openConnection() as HttpURLConnection
-        try {
-            connection.connectTimeout = timeoutMillis
-            connection.readTimeout = timeoutMillis
-            connection.useCaches = false
-            if (etag != null) connection.setRequestProperty("If-None-Match", etag)
-            connection.setRequestProperty(CampaignSdk.CLIENT_HEADER, client)
-            when (val status = connection.responseCode) {
-                200 -> CampaignFetchResult.Fetched(connection.inputStream.bufferedReader().use { it.readText() }, connection.getHeaderField("ETag"))
-                304 -> CampaignFetchResult.NotModified
-                else -> throw Failure(status)
-            }
-        } finally {
-            connection.disconnect()
-        }
-    }
-
-    public companion object {
-        public const val DEFAULT_ENDPOINT: String = "https://api.appgrowstack.com/v1/campaigns/sets/"
-    }
+    override suspend fun fetch(etag: String?): CampaignFetchResult =
+        if (etag == this.etag) CampaignFetchResult.NotModified else CampaignFetchResult.Fetched(text, this.etag)
 }
 
 // MARK: clock

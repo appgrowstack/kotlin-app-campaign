@@ -43,7 +43,8 @@ public class CampaignOffer<V>(
  * values as the placement's type. A `system` placement (`review_ask`) is never presented: its
  * action runs at once.
  *
- * @param projectKey the project's public key (`pk_…`). Not a secret.
+ * @param fetcher where the set comes from: [BundledCampaignSetFetcher] for the set shipped in the
+ *   app, or a connector that fetches it from a server.
  * @param person R2's person id (the first install id; `identify` may return another). Decides the holdout side.
  * @param facts cheap device facts first; conditions are read in the order they are written.
  * @param texts the app's strings for `<text_key>.<value name>` in the device's language; `null` when there is none.
@@ -51,7 +52,6 @@ public class CampaignOffer<V>(
  * @param isBusy `true` while the app has another full screen up. Campaigns wait for it, up to the trigger's `wait_seconds`.
  */
 public class CampaignEngine(
-    projectKey: String,
     private val context: CampaignContext,
     private val person: () -> String,
     placements: List<CampaignPlacement<*>>,
@@ -60,7 +60,7 @@ public class CampaignEngine(
     assets: Set<String> = emptySet(),
     private val storage: CampaignStorage,
     private val record: (CampaignEvent) -> Unit,
-    private val fetcher: CampaignSetFetcher = HttpCampaignSetFetcher(projectKey, CampaignSdk.client(context.platform, context.appVersion)),
+    private val fetcher: CampaignSetFetcher,
     private val texts: (String) -> String? = { null },
     public var isBusy: () -> Boolean = { false },
     private val link: (String) -> Unit = {},

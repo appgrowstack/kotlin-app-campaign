@@ -71,7 +71,6 @@ class CampaignEngineTest {
         val engine = engine(appVersion)
 
         fun engine(appVersion: String) = CampaignEngine(
-            projectKey = "pk_test",
             context = context.copy(appVersion = appVersion),
             person = { person },
             placements = listOf(trialOffer, banner, whatsNew, CampaignPlacement.system("review_ask")),
@@ -251,7 +250,6 @@ class CampaignEngineTest {
         val recorder = CampaignEventRecorder()
         val fetcher = FakeCampaignSetFetcher()
         val engine = CampaignEngine(
-            projectKey = "pk_test",
             context = CampaignContext("3.3.0", "330", "play", "ja", "JP", ZoneId.of("Asia/Tokyo")),
             person = { "user-6" },
             placements = listOf(wrong),

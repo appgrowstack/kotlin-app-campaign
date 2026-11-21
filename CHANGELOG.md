@@ -9,14 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- Fetching the set sends `AppGrowStack-Client: <platform>/<app_version>/kotlin-app-campaign/<version>`
-  (`android/2.1.0/kotlin-app-campaign/0.1.0`), built from `CampaignContext` by the engine. It carries
-  nothing that identifies a person. `HttpCampaignSetFetcher(projectKey, client, …)` now takes the
-  header value; build it with `CampaignSdk.client(platform, appVersion)`.
+- **Breaking.** `CampaignEngine(fetcher = …)` is required and the engine no longer takes a project
+  key.
 
 ### Added
 
-- `CampaignSdk.NAME` and `CampaignSdk.VERSION`.
+- `BundledCampaignSetFetcher`: the set shipped in the app, with a stable ETag so it is decoded once.
+- `CampaignSetFetchFailure(status)` for fetchers that got neither a set nor "not modified".
+- `CampaignSdk.NAME` and `CampaignSdk.VERSION`, for a connector to report when it fetches sets.
+
+### Removed
+
+- `HttpCampaignSetFetcher`. Fetching from a server is a fetcher in a separate connector module.
 
 ### Fixed
 
