@@ -1,5 +1,6 @@
 package com.appgrowstack.campaign
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -111,6 +112,8 @@ public class CampaignEngine(
             val current = state ?: return
             val result = try {
                 fetcher.fetch(if (set == null) null else current.etag)
+            } catch (e: CancellationException) {
+                throw e
             } catch (_: Exception) {
                 return@withLock null
             }
@@ -195,7 +198,7 @@ public class CampaignEngine(
             val set = set ?: return
             val fetchedAt = current.fetchedAt ?: return
             val decision = CampaignRules.decide(input(set, current, fetchedAt, event)) { name ->
-                facts[name]?.let { fact -> runCatching { fact.read() }.getOrNull() }
+                facts[name]?.let { fact -> catching { fact.read() }.getOrNull() }
             }
             var next = current
             for (measured in decision.records) {
@@ -341,7 +344,7 @@ public class CampaignEngine(
                 "link" to CampaignActionResult.COMPLETED
             }
             is CampaignTap.Action -> onTap.name to (actions[onTap.name]?.let { action ->
-                runCatching {
+                catching {
                     action.run(CampaignActionRequest(presentation.campaign, presentation.setVersion, presentation.trigger, presentation.event, onTap.arguments))
                 }.getOrDefault(CampaignActionResult.FAILED)
             } ?: CampaignActionResult.FAILED)
@@ -442,4 +445,16 @@ public class CampaignEngine(
         val to = Instant.ofEpochMilli(end).atZone(zone).toLocalDate()
         return maxOf(0, ChronoUnit.DAYS.between(from, to).toInt())
     }
+}
+
+/**
+ * `runCatching` that lets cancellation through: a cancelled fact read or action is not "unavailable" or
+ * "failed", and recording it as such would put a wrong row in the history and the analytics.
+ */
+private inline fun <T> catching(block: () -> T): Result<T> = try {
+    Result.success(block())
+} catch (e: CancellationException) {
+    throw e
+} catch (e: Exception) {
+    Result.failure(e)
 }

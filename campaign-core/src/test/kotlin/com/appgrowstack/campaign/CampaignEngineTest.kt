@@ -4,6 +4,7 @@ import com.appgrowstack.campaign.testing.CampaignEventRecorder
 import com.appgrowstack.campaign.testing.FakeCampaignClock
 import com.appgrowstack.campaign.testing.FakeCampaignSetFetcher
 import com.appgrowstack.campaign.testing.FakeImagePrefetcher
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -17,6 +18,7 @@ import java.io.File
 import java.time.ZoneId
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
@@ -68,6 +70,8 @@ class CampaignEngineTest {
         val recorder = CampaignEventRecorder()
         val reviews = mutableListOf<CampaignActionRequest>()
         val trials = mutableListOf<CampaignActionRequest>()
+        /** Thrown by start_trial when set (the action's coroutine was cancelled, a failing action). */
+        var trialThrows: Exception? = null
         val context = CampaignContext("3.3.0", "330", "play", "ja", "JP", ZoneId.of("Asia/Tokyo"))
         val engine = engine(appVersion)
 
@@ -82,7 +86,7 @@ class CampaignEngineTest {
                 CampaignFact.server("trial_eligible", CampaignFactType.BOOL) { CampaignValue.of(true) },
             ),
             actions = listOf(
-                CampaignAction("start_trial") { trials.add(it); CampaignActionResult.COMPLETED },
+                CampaignAction("start_trial") { trialThrows?.let { e -> throw e }; trials.add(it); CampaignActionResult.COMPLETED },
                 CampaignAction("request_review") { reviews.add(it); CampaignActionResult.COMPLETED },
                 CampaignAction.submitAnswer(),
                 CampaignAction("open_habit", mapOf(
@@ -124,6 +128,29 @@ class CampaignEngineTest {
         assertEquals(mapOf("3.3.0" to 1), record.shownByAppVersion)
         assertNotNull(record.actionCompletedAt)
         assertEquals(listOf("campaign_eligible", "campaign_shown", "campaign_tapped", "campaign_action_completed"), h.recorder.events.map { it.name })
+    }
+
+    @Test
+    fun aCancelledActionIsNotRecordedAsFailed() = runTest {
+        val h = Harness()
+        h.load(caseSet("show-after-paywall"))
+        h.engine.receive(paywallClosed)
+        val offer = assertNotNull(h.engine.offer(trialOffer))
+        h.trialThrows = CancellationException("the screen went away")
+        assertFailsWith<CancellationException> { h.engine.tap(offer.presentation) }
+        assertEquals(listOf("campaign_eligible", "campaign_shown", "campaign_tapped"), h.recorder.events.map { it.name })
+    }
+
+    @Test
+    fun aThrowingActionIsRecordedAsFailed() = runTest {
+        val h = Harness()
+        h.load(caseSet("show-after-paywall"))
+        h.engine.receive(paywallClosed)
+        val offer = assertNotNull(h.engine.offer(trialOffer))
+        h.trialThrows = IllegalStateException("billing unavailable")
+        h.engine.tap(offer.presentation)
+        val completed = h.recorder.named("campaign_action_completed").single()
+        assertEquals(CampaignValue.of("failed"), completed.params["result"])
     }
 
     @Test
