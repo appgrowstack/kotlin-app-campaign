@@ -29,6 +29,15 @@ class CampaignManifestTest {
     }
 
     @Test
+    fun surveyIsTheManifestsDefault() {
+        val manifest = File(SharedCasesTest.directory, "inapp/manifests/reading-memory.json").readText()
+        val registry = CampaignManifest.registry(manifest)
+        assertEquals(CampaignSurvey.placement.spec, registry.placements.getValue(CampaignSurvey.NAME))
+        assertEquals(CampaignPlacementKind.SHEET, registry.placements.getValue(CampaignSurvey.NAME).kind)
+        assertEquals(CampaignAction.submitAnswer().arguments, registry.actions.getValue(CampaignAction.SUBMIT_ANSWER))
+    }
+
+    @Test
     fun versions() {
         assertEquals(CampaignVersion(3, 10, 0), CampaignVersion.parse("3.10"))
         assertTrue(CampaignVersion.parse("4.0.0")!! !in VersionRange.parse(">=3.3.0 <4.0.0")!!)

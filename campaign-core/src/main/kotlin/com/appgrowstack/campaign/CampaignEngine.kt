@@ -33,6 +33,8 @@ public class CampaignOffer<V>(
     public val tap: () -> Unit,
     /** Any way of closing without the primary button. */
     public val dismiss: (CampaignDismissal) -> Unit,
+    /** A `survey` answer (a [CampaignSurvey.Values.choices] id). Records `survey_answered`, then closes like [tap]. */
+    public val answer: (String) -> Unit,
 )
 
 /**
@@ -95,6 +97,8 @@ public class CampaignEngine(
     private val imagesReady = mutableSetOf<String>()
     private var pendingUpdate: ObservedEvent? = null
     private var waiting: Waiting? = null
+    /** `paywall_closed` was heard in this launch: `survey` campaigns wait for the next launch. */
+    @Volatile private var paywallClosedThisLaunch = false
 
     private class Waiting(val campaign: Campaign, val trigger: String)
 
@@ -182,7 +186,9 @@ public class CampaignEngine(
 
     /** The same as [observe], awaited: returns after the campaign was shown or skipped. */
     public suspend fun receive(event: ObservedEvent) {
-        if (event.name.startsWith("campaign")) return
+        // campaign_* are the SDK's own; survey_* are answers, which never trigger anything.
+        if (event.name.startsWith("campaign") || event.name.startsWith("survey_")) return
+        if (event.name == "paywall_closed") paywallClosedThisLaunch = true
         prepare()
         val selection = mutex.withLock {
             val current = state ?: return
@@ -210,8 +216,10 @@ public class CampaignEngine(
         waitAndShow(selection, event)
     }
 
-    private fun input(set: CampaignSet, state: CampaignStoredState, fetchedAt: Long, event: ObservedEvent): CampaignDecisionInput {
+    private fun input(all: CampaignSet, state: CampaignStoredState, fetchedAt: Long, event: ObservedEvent): CampaignDecisionInput {
         val now = clock.now()
+        // After the paywall was closed, a survey is not the next thing in this launch.
+        val set = if (paywallClosedThisLaunch) all.copy(campaigns = all.campaigns.filter { it.type != CampaignType.SURVEY }) else all
         return CampaignDecisionInput(
             set = set, registry = registry, fetchedAt = fetchedAt, now = now, context = context, person = person(),
             daysSinceFirstSeen = days(state.firstSeenAt, now), history = state.history, sessionShown = sessionShown,
@@ -343,6 +351,23 @@ public class CampaignEngine(
         update { it.updating(presentation.campaign) { record -> record.copy(actionCompletedAt = clock.now()) } }
     }
 
+    /**
+     * A `survey` answer: [choice] is a [CampaignSurvey.Values.choices] id (`choice_1`…, or `"0"`…`"<scale>"`).
+     * Records `survey_answered`, closes the sheet and runs `submit_answer`. An id the campaign does not have
+     * is ignored. Send what was written with the support connector's feedback call.
+     */
+    public suspend fun answer(presentation: CampaignPresentation, choice: String) {
+        if (presentingFlow.value?.id != presentation.id || !CampaignSurvey.isChoice(choice, presentation.values)) return
+        presentingFlow.value = null
+        record(CampaignEvent("survey_answered", mapOf(
+            "campaign" to CampaignValue.of(presentation.campaign),
+            "set_version" to CampaignValue.of(presentation.setVersion),
+            "choice" to CampaignValue.of(choice),
+        )))
+        record(CampaignEvent.tapped(presentation.campaign, presentation.setVersion, presentation.trigger, "action"))
+        complete(presentation)
+    }
+
     /** Any way of closing without the primary button. */
     public suspend fun dismiss(presentation: CampaignPresentation, via: CampaignDismissal) {
         if (presentingFlow.value?.id != presentation.id) return
@@ -368,6 +393,7 @@ public class CampaignEngine(
             values = values,
             tap = { scope.launch { tap(presentation) } },
             dismiss = { via -> scope.launch { dismiss(presentation, via) } },
+            answer = { choice -> scope.launch { answer(presentation, choice) } },
         )
     }
 

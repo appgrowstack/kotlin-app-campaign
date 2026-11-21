@@ -73,7 +73,7 @@ public sealed interface CampaignResolvedValue {
 }
 
 public enum class CampaignType(public val code: String) {
-    TRIAL_OFFER("trial_offer"), REVIEW_ASK("review_ask"), WHATS_NEW("whats_new"), CROSS_PROMO("cross_promo"), CUSTOM("custom");
+    TRIAL_OFFER("trial_offer"), REVIEW_ASK("review_ask"), WHATS_NEW("whats_new"), CROSS_PROMO("cross_promo"), SURVEY("survey"), CUSTOM("custom");
 
     public companion object {
         public fun of(code: String): CampaignType? = entries.firstOrNull { it.code == code }

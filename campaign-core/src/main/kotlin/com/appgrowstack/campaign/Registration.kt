@@ -39,6 +39,8 @@ public data class CampaignField(val type: CampaignFieldType, val required: Boole
 public enum class CampaignPlacementKind(public val code: String) {
     /** The SDK says "show this now" and the app presents it in its own way. */
     MODAL("modal"),
+    /** The same as [MODAL], presented from the bottom at about half height (the `survey` question). */
+    SHEET("sheet"),
     /** No look of its own: showing it runs `on_tap` at once (the OS review prompt). No tap is recorded. */
     SYSTEM("system"),
     ;
@@ -169,7 +171,22 @@ public class CampaignAction(
     public val name: String,
     public val arguments: Map<String, CampaignArgument> = emptyMap(),
     public val run: suspend (CampaignActionRequest) -> CampaignActionResult,
-)
+) {
+    public companion object {
+        public const val SUBMIT_ANSWER: String = "submit_answer"
+
+        /**
+         * `submit_answer` (survey): the engine already recorded `survey_answered` when the sheet called
+         * [CampaignEngine.answer]. Register it so the campaign passes the checks; [sent] runs after.
+         * The answer changes nothing the person gets.
+         */
+        public fun submitAnswer(sent: suspend (CampaignActionRequest) -> Unit = {}): CampaignAction =
+            CampaignAction(SUBMIT_ANSWER) { request ->
+                sent(request)
+                CampaignActionResult.COMPLETED
+            }
+    }
+}
 
 /**
  * Everything the app registered, in the shape the checks read. The engine builds it from what it is

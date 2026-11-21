@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- The `survey` type: `CampaignSurvey` (placement kind `SHEET`), `CampaignAction.submitAnswer()`, and
+  `CampaignEngine.answer` / `CampaignOffer.answer`, which record `survey_answered`. A survey is not
+  shown in a launch where `paywall_closed` was heard. `survey_*` events never trigger.
+
 ## [0.3.0] - 2026-11-21
 
 ### Changed

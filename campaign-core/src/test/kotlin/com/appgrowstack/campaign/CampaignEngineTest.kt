@@ -9,6 +9,7 @@ import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
@@ -73,7 +74,7 @@ class CampaignEngineTest {
         fun engine(appVersion: String) = CampaignEngine(
             context = context.copy(appVersion = appVersion),
             person = { person },
-            placements = listOf(trialOffer, banner, whatsNew, CampaignPlacement.system("review_ask")),
+            placements = listOf(trialOffer, banner, whatsNew, CampaignPlacement.system("review_ask"), CampaignSurvey.placement),
             facts = listOf(
                 CampaignFact.device("is_premium", CampaignFactType.BOOL) { CampaignValue.of(false) },
                 CampaignFact.device("has_trial_grant", CampaignFactType.BOOL) { CampaignValue.of(false) },
@@ -83,6 +84,7 @@ class CampaignEngineTest {
             actions = listOf(
                 CampaignAction("start_trial") { trials.add(it); CampaignActionResult.COMPLETED },
                 CampaignAction("request_review") { reviews.add(it); CampaignActionResult.COMPLETED },
+                CampaignAction.submitAnswer(),
                 CampaignAction("open_habit", mapOf(
                     "habit" to CampaignArgument(CampaignArgumentType.STRING, true),
                     "days" to CampaignArgument(CampaignArgumentType.INT, false),
@@ -290,5 +292,97 @@ class CampaignEngineTest {
         })
         h.engine.receive(ObservedEvent("campaign_shown"))
         assertTrue(h.recorder.events.isEmpty())
+    }
+
+    // MARK: survey
+
+    private val bookAdded = ObservedEvent("book_added")
+
+    private fun surveySet(values: String = """{"question":{"ja":"今は Premium にしない理由は？"},"choice_1":{"ja":"値段"},"choice_2":{"ja":"まだ分からない"},"choice_3":{"ja":"ほか"},"free_text":true}""", trigger: String = "book_added"): String {
+        val survey = Json.parseToJsonElement("""
+            {"schema_version":1,"id":"survey-why-not-premium","type":"survey","status":"active","title":"理由を聞く","purpose":"理由",
+             "priority":40,"platforms":["ios","android"],"app_version":{"ios":">=3.3.0","android":">=3.3.0"},
+             "starts_at":null,"ends_at":null,
+             "triggers":[{"id":"after","event":"$trigger","where":null,"wait_seconds":0}],
+             "audience":null,
+             "limits":{"max_shown":1,"min_hours_between":0,"after_dismiss_days":30,"after_action_days":null},
+             "holdout":0,
+             "show":{"placement":"survey","values":$values},
+             "on_tap":{"action":"submit_answer","args":{}},
+             "goals":[{"event":"survey_answered","where":null,"within_hours":1}]}
+        """).jsonObject
+        return caseSet("show-after-paywall") { JsonObject(it + ("campaigns" to JsonArray(listOf(survey)))) }
+    }
+
+    @Test
+    fun surveyIsASheetAndAnAnswerIsRecordedOnce() = runTest {
+        val h = Harness()
+        h.load(surveySet())
+        h.engine.receive(bookAdded)
+
+        val offer = assertNotNull(h.engine.offer(CampaignSurvey.placement))
+        assertEquals("今は Premium にしない理由は？", offer.values.question)
+        assertEquals(listOf("choice_1", "choice_2", "choice_3"), offer.values.choices.map { it.id })
+        assertTrue(offer.values.asksForText)
+
+        // An id the campaign does not have is ignored and the sheet stays.
+        h.engine.answer(offer.presentation, "choice_5")
+        h.engine.answer(offer.presentation, "7")
+        assertNotNull(h.engine.presenting.value)
+        assertTrue(h.recorder.named("survey_answered").isEmpty())
+
+        h.engine.answer(offer.presentation, "choice_2")
+        assertNull(h.engine.presenting.value)
+        val answered = h.recorder.named("survey_answered").single()
+        assertEquals(CampaignValue.of("choice_2"), answered.params["choice"])
+        assertEquals(CampaignValue.of("survey-why-not-premium"), answered.params["campaign"])
+        val done = h.recorder.named("campaign_action_completed").single()
+        assertEquals(CampaignValue.of("submit_answer"), done.params["action"])
+        assertEquals(CampaignValue.of("completed"), done.params["result"])
+
+        h.engine.answer(offer.presentation, "choice_1")
+        assertEquals(1, h.recorder.named("survey_answered").size)
+    }
+
+    @Test
+    fun surveyScaleAnswersAreNumbersUpToTheScale() = runTest {
+        val h = Harness()
+        h.load(surveySet("""{"question":{"ja":"友達に勧めますか？"},"choice_1":{"ja":"勧めない"},"choice_2":{"ja":"勧める"},"scale":10}"""))
+        h.engine.receive(bookAdded)
+        val offer = assertNotNull(h.engine.offer(CampaignSurvey.placement))
+        assertEquals(11, offer.values.choices.size)
+        assertEquals("勧めない", offer.values.choices.first().label)
+        assertEquals("勧める", offer.values.choices.last().label)
+        h.engine.answer(offer.presentation, "11")
+        h.engine.answer(offer.presentation, "choice_1")
+        assertTrue(h.recorder.named("survey_answered").isEmpty())
+        h.engine.answer(offer.presentation, "10")
+        assertEquals(CampaignValue.of("10"), h.recorder.named("survey_answered").single().params["choice"])
+    }
+
+    @Test
+    fun noSurveyInTheLaunchThePaywallWasClosed() = runTest {
+        val h = Harness()
+        h.load(surveySet())
+        h.engine.receive(paywallClosed)
+        h.engine.receive(bookAdded)
+        assertNull(h.engine.presenting.value)
+        assertTrue(h.recorder.named("campaign_eligible").isEmpty())
+
+        // The next launch (a new engine on the same storage) asks.
+        val next = h.engine("3.3.0")
+        h.fetcher.enqueueSet(surveySet(), "\"v7\"")
+        next.refresh()
+        next.receive(bookAdded)
+        assertNotNull(next.offer(CampaignSurvey.placement))
+    }
+
+    @Test
+    fun surveyAnswersNeverTrigger() = runTest {
+        val h = Harness()
+        h.load(surveySet(trigger = "survey_answered"))
+        h.engine.receive(ObservedEvent("survey_answered", mapOf("choice" to CampaignValue.of("choice_1"))))
+        assertNull(h.engine.presenting.value)
+        assertTrue(h.recorder.named("campaign_eligible").isEmpty())
     }
 }
