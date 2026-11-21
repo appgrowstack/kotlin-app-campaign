@@ -149,6 +149,12 @@ public data class CampaignContext(
     /** The owner's or a tester's device: always on the treatment side. Set by the app's debug screen. */
     val internalDevice: Boolean = false,
     val platform: String = "android",
+    /**
+     * When the person first used the app (epoch milliseconds), if the app knew it before this SDK (its
+     * own first-launch date). `days_since_first_seen` counts from the earlier of this and the date the
+     * engine stored on its own first launch. `null`: the engine's own date only.
+     */
+    val firstSeenAt: Long? = null,
 )
 
 internal object CampaignNames {

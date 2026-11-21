@@ -153,6 +153,8 @@ public class CampaignEngine(
                 (CampaignSetLoader.load(text, registry) as? CampaignSetLoader.Result.Loaded)?.let { set = it.set }
             }
             var next = stored ?: CampaignStoredState(firstSeenAt = clock.now())
+            // The app's own first-launch date counts when it is earlier than the one stored here.
+            context.firstSeenAt?.let { given -> if (given < next.firstSeenAt) next = next.copy(firstSeenAt = given) }
             val previous = next.lastAppVersion?.let(CampaignVersion::parse)
             val current = CampaignVersion.parse(context.appVersion)
             if (stored != null && previous != null && current != null && current > previous) {

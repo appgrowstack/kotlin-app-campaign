@@ -62,17 +62,23 @@ class CampaignEngineTest {
         return change(SharedCasesTest.read(file).getValue("set").jsonObject).toString()
     }
 
-    private inner class Harness(val person: String = "user-6", val busy: () -> Boolean = { false }, appVersion: String = "3.3.0") {
-        val fetcher = FakeCampaignSetFetcher()
+    private inner class Harness(
+        val person: String = "user-6",
+        val busy: () -> Boolean = { false },
+        appVersion: String = "3.3.0",
         /** Installed ten days ago, so `days_since_first_seen` conditions pass. */
-        val storage = InMemoryCampaignStorage(state = CampaignStoredState(firstSeenAt = start - 10 * 86_400_000L, lastAppVersion = appVersion))
+        stored: CampaignStoredState? = CampaignStoredState(firstSeenAt = start - 10 * 86_400_000L, lastAppVersion = appVersion),
+        firstSeenAt: Long? = null,
+    ) {
+        val fetcher = FakeCampaignSetFetcher()
+        val storage = InMemoryCampaignStorage(state = stored)
         val clock = FakeCampaignClock(start)
         val recorder = CampaignEventRecorder()
         val reviews = mutableListOf<CampaignActionRequest>()
         val trials = mutableListOf<CampaignActionRequest>()
         /** Thrown by start_trial when set (the action's coroutine was cancelled, a failing action). */
         var trialThrows: Exception? = null
-        val context = CampaignContext("3.3.0", "330", "play", "ja", "JP", ZoneId.of("Asia/Tokyo"))
+        val context = CampaignContext("3.3.0", "330", "play", "ja", "JP", ZoneId.of("Asia/Tokyo"), firstSeenAt = firstSeenAt)
         val engine = engine(appVersion)
 
         fun engine(appVersion: String) = CampaignEngine(
@@ -107,6 +113,21 @@ class CampaignEngineTest {
             fetcher.enqueueSet(body, "\"v7\"")
             engine.refresh()
         }
+    }
+
+    @Test
+    fun appsOwnFirstSeenDateCountsWhenEarlier() = runTest {
+        val tenDaysAgo = start - 10 * 86_400_000L
+        suspend fun storedAfterLaunch(h: Harness): Long? {
+            h.load(caseSet("show-after-paywall"))
+            return h.storage.loadState()?.firstSeenAt
+        }
+        // A new state takes the app's date from the first launch; without one it is today.
+        assertEquals(tenDaysAgo, storedAfterLaunch(Harness(stored = null, firstSeenAt = tenDaysAgo)))
+        assertEquals(start, storedAfterLaunch(Harness(stored = null)))
+        // A stored date of today moves to the app's earlier date; a later date never moves it.
+        assertEquals(tenDaysAgo, storedAfterLaunch(Harness(stored = CampaignStoredState(firstSeenAt = start, lastAppVersion = "3.3.0"), firstSeenAt = tenDaysAgo)))
+        assertEquals(tenDaysAgo, storedAfterLaunch(Harness(firstSeenAt = start)))
     }
 
     @Test
