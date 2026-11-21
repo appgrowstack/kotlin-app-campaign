@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-22
+
 ### Changed
 
 - **Breaking.** `CampaignDecision.heldOut` is replaced by `CampaignDecision.eligible`

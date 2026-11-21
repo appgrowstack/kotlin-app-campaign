@@ -6,5 +6,5 @@ public object CampaignSdk {
     public const val NAME: String = "kotlin-app-campaign"
 
     /** The released version. Must equal `version` in gradle.properties (CampaignSdkTest checks it). */
-    public const val VERSION: String = "0.4.0"
+    public const val VERSION: String = "0.5.0"
 }

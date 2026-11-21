@@ -112,7 +112,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 dependencies {
-    implementation("com.github.appgrowstack:kotlin-app-campaign:0.4.0")
+    implementation("com.github.appgrowstack:kotlin-app-campaign:0.5.0")
 }
 ```
 
