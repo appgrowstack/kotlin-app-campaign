@@ -1,0 +1,5 @@
+# JitPack が公開の repo のタグから組む（com.github.no-problem-dev.kotlin-app-campaign:campaign-core:<版>）
+jdk:
+  - openjdk21
+install:
+  - ./gradlew :campaign-core:publishToMavenLocal -Pgroup=$GROUP.$ARTIFACT -Pversion=$VERSION
