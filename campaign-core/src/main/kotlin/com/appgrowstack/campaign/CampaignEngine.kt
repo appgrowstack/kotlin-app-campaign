@@ -14,30 +14,6 @@ import java.time.Instant
 import java.time.temporal.ChronoUnit
 import java.util.UUID
 
-/** A campaign the app should present now, in its own placement. */
-public data class CampaignPresentation(
-    val id: String,
-    val campaign: String,
-    val setVersion: Int,
-    val trigger: String,
-    val placement: String,
-    val values: Map<String, CampaignResolvedValue>,
-    val event: ObservedEvent,
-    val onTap: CampaignTap,
-)
-
-/** The presentation as one placement's values, with the two ways out. */
-public class CampaignOffer<V>(
-    public val presentation: CampaignPresentation,
-    public val values: V,
-    /** The primary button: closes the placement, then runs the action or opens the link. */
-    public val tap: () -> Unit,
-    /** Any way of closing without the primary button. */
-    public val dismiss: (CampaignDismissal) -> Unit,
-    /** A `survey` answer (a [CampaignSurvey.Values.choices] id). Records `survey_answered`, then closes like [tap]. */
-    public val answer: (String) -> Unit,
-)
-
 /**
  * Fetches the set, hears events, decides, waits until the screen is free, and hands the app a
  * presentation. Everything it measures goes to [record]; it never sends anything itself.
@@ -68,7 +44,7 @@ public class CampaignEngine(
     public var isBusy: () -> Boolean = { false },
     private val link: (String) -> Unit = {},
     private val clock: CampaignClock = SystemCampaignClock,
-    private val images: CampaignImagePrefetcher = CampaignImagePrefetcher.Http,
+    images: CampaignImagePrefetcher = CampaignImagePrefetcher.Http,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
     private val placements = placements.associateBy { it.name }
@@ -95,7 +71,7 @@ public class CampaignEngine(
     private var state: CampaignStoredState? = null
     private var sessionShown = 0
     private val launchedAt = clock.now()
-    private val imagesReady = mutableSetOf<String>()
+    private val imageCache = CampaignImageCache(images)
     private var pendingUpdate: ObservedEvent? = null
     private var waiting: Waiting? = null
     /** `paywall_closed` was heard in this launch: `survey` campaigns wait for the next launch. */
@@ -136,7 +112,7 @@ public class CampaignEngine(
             storage.saveState(next)
             loaded
         }
-        fetched?.let { prefetchImages(it) }
+        fetched?.let { imageCache.prefetch(it) }
         pendingUpdate?.let { update ->
             if (set != null && state?.fetchedAt != null) {
                 pendingUpdate = null
@@ -152,33 +128,17 @@ public class CampaignEngine(
             storage.loadSet()?.let { text ->
                 (CampaignSetLoader.load(text, registry) as? CampaignSetLoader.Result.Loaded)?.let { set = it.set }
             }
-            var next = stored ?: CampaignStoredState(firstSeenAt = clock.now())
-            // The app's own first-launch date counts when it is earlier than the one stored here.
-            context.firstSeenAt?.let { given -> if (given < next.firstSeenAt) next = next.copy(firstSeenAt = given) }
-            val previous = next.lastAppVersion?.let(CampaignVersion::parse)
-            val current = CampaignVersion.parse(context.appVersion)
-            if (stored != null && previous != null && current != null && current > previous) {
-                val from = next.lastAppVersion!!
+            val start = CampaignLaunch.start(stored, context, clock.now())
+            start.updatedFrom?.let { from ->
                 record(CampaignEvent.appUpdated(from, context.appVersion))
                 pendingUpdate = ObservedEvent("app_updated", mapOf(
                     "from_version" to CampaignValue.of(from), "to_version" to CampaignValue.of(context.appVersion),
                 ))
             }
-            next = next.copy(lastAppVersion = context.appVersion)
-            state = next
-            storage.saveState(next)
+            state = start.state
+            storage.saveState(start.state)
         }
-        set?.let { prefetchImages(it) }
-    }
-
-    private suspend fun prefetchImages(set: CampaignSet) {
-        for (campaign in set.campaigns) {
-            for (value in campaign.values.values) {
-                val image = CampaignImage.fromJson(value) as? CampaignImage.Url ?: continue
-                if (image.url in imagesReady) continue
-                if (images.prefetch(image.url)) imagesReady.add(image.url)
-            }
-        }
+        set?.let { imageCache.prefetch(it) }
     }
 
     // MARK: events
@@ -228,7 +188,7 @@ public class CampaignEngine(
         return CampaignDecisionInput(
             set = set, registry = registry, fetchedAt = fetchedAt, now = now, context = context, person = person(),
             daysSinceFirstSeen = days(state.firstSeenAt, now), history = state.history, sessionShown = sessionShown,
-            event = event, sessionSeconds = (now - launchedAt) / 1000, texts = texts, imagesReady = imagesReady.toSet(),
+            event = event, sessionSeconds = (now - launchedAt) / 1000, texts = texts, imagesReady = imageCache.snapshot(),
         )
     }
 
@@ -416,7 +376,7 @@ public class CampaignEngine(
         val input = CampaignDecisionInput(
             set = set, registry = registry, fetchedAt = now, now = now, context = context, person = person(),
             daysSinceFirstSeen = 0, history = CampaignHistory(), sessionShown = 0, event = ObservedEvent("debug"),
-            texts = texts, imagesReady = imagesReady.toSet(),
+            texts = texts, imagesReady = imageCache.snapshot(),
         )
         val values = CampaignRules.resolveValues(found, input) ?: return false
         presentingFlow.value = CampaignPresentation(
