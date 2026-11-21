@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
-- The JitPack coordinate in the README: `com.github.no-problem-dev:kotlin-app-campaign`.
+- The JitPack coordinate in the README: `com.github.appgrowstack:kotlin-app-campaign`.
 
 ## [0.1.0] - 2026-11-21
 

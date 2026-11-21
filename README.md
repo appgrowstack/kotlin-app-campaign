@@ -6,7 +6,7 @@ Show the right thing to the right person inside your Android app, without shippi
 campaign names one of your app's own screens (a placement), the values to fill it with, the event
 that triggers it, who it is for, how often, and who is held out for comparison. The device decides.
 
-The Kotlin side of [swift-app-campaign](https://github.com/no-problem-dev/swift-app-campaign). Both
+The Kotlin side of [swift-app-campaign](https://github.com/appgrowstack/swift-app-campaign). Both
 read the same sets and pass the same decision tables, so a person sees the same thing on iOS and
 Android and lands on the same holdout side.
 
@@ -99,13 +99,13 @@ assertEquals(emptyList(), CampaignManifest.verify(campaigns.registry, manifestTe
 
 ## Installation
 
-From [JitPack](https://jitpack.io/#no-problem-dev/kotlin-app-campaign):
+From [JitPack](https://jitpack.io/#appgrowstack/kotlin-app-campaign):
 
 ```kotlin
 // settings.gradle.kts
 dependencyResolutionManagement { repositories { maven("https://jitpack.io") } }
 // build.gradle.kts
-dependencies { implementation("com.github.no-problem-dev:kotlin-app-campaign:0.1.0") }
+dependencies { implementation("com.github.appgrowstack:kotlin-app-campaign:0.1.0") }
 ```
 
 While `campaign-core` is the only module, JitPack names the artifact after the repository.

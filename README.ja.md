@@ -4,7 +4,7 @@
 
 Android のアプリの中で、新しいビルドを出さずに、合う人に合う物を出す。キャンペーンの件はアプリ自身の画面（プレースメント）・入れる値・きっかけの出来事・誰に・何回まで・比べるために出さない人（holdout）を書き、端末が決める。
 
-[swift-app-campaign](https://github.com/no-problem-dev/swift-app-campaign) の Kotlin の側。どちらも同じ組を読み、同じ判定の表を通すので、同じ人は iOS でも Android でも同じ物を見て、holdout の側も同じになる。
+[swift-app-campaign](https://github.com/appgrowstack/swift-app-campaign) の Kotlin の側。どちらも同じ組を読み、同じ判定の表を通すので、同じ人は iOS でも Android でも同じ物を見て、holdout の側も同じになる。
 
 > 開発は非公開のモノリポでしていて、ここへは片方向にコピーしている。Issue は受ける。PR は受けない。
 
@@ -18,7 +18,7 @@ Android のアプリの中で、新しいビルドを出さずに、合う人に
 - **読めなければ出さない。** オフラインでは手元の組を `cache_hours` まで使い、その後は何も出さない。読めない組が届いたら前の組を使い続ける。知らないプレースメント・動き・値・演算子・紹介先や型の違いは、その件だけ飛ばして `campaign_rejected` を1回記録する
 - **中身は Android に依存しない。** `campaign-core` は Kotlin/JVM（coroutines と kotlinx.serialization）。headless のテストで `./gradlew test` から動かせる
 
-使い方は [README.md](./README.md) の Quick Start。入れ方は JitPack の `com.github.no-problem-dev:kotlin-app-campaign:<版>`。
+使い方は [README.md](./README.md) の Quick Start。入れ方は JitPack の `com.github.appgrowstack:kotlin-app-campaign:<版>`。
 
 ## ライセンス
 

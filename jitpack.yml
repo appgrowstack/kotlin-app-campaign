@@ -1,5 +1,5 @@
-# JitPack が公開の repo のタグから組む（com.github.no-problem-dev:kotlin-app-campaign:<版>）。
-# モジュールが1つの間は JitPack が repo の名前で出す。2つ目のモジュールを足すと com.github.no-problem-dev.kotlin-app-campaign:<モジュール>:<版> になる
+# JitPack が公開の repo のタグから組む（com.github.appgrowstack:kotlin-app-campaign:<版>）。
+# モジュールが1つの間は JitPack が repo の名前で出す。2つ目のモジュールを足すと com.github.appgrowstack.kotlin-app-campaign:<モジュール>:<版> になる
 jdk:
   - openjdk21
 install:
