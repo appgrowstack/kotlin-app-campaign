@@ -18,7 +18,7 @@ Android のアプリの中で、新しいビルドを出さずに、合う人に
 - **読めなければ出さない。** オフラインでは手元の組を `cache_hours` まで使い、その後は何も出さない。読めない組が届いたら前の組を使い続ける。知らないプレースメント・動き・値・演算子・紹介先や型の違いは、その件だけ飛ばして `campaign_rejected` を1回記録する
 - **中身は Android に依存しない。** `campaign-core` は Kotlin/JVM（coroutines と kotlinx.serialization）。headless のテストで `./gradlew test` から動かせる
 
-使い方は [README.md](./README.md) の Quick Start。入れ方は JitPack の `com.github.no-problem-dev.kotlin-app-campaign:campaign-core:<版>`。
+使い方は [README.md](./README.md) の Quick Start。入れ方は JitPack の `com.github.no-problem-dev:kotlin-app-campaign:<版>`。
 
 ## ライセンス
 

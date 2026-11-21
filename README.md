@@ -105,8 +105,10 @@ From [JitPack](https://jitpack.io/#no-problem-dev/kotlin-app-campaign):
 // settings.gradle.kts
 dependencyResolutionManagement { repositories { maven("https://jitpack.io") } }
 // build.gradle.kts
-dependencies { implementation("com.github.no-problem-dev.kotlin-app-campaign:campaign-core:0.1.0") }
+dependencies { implementation("com.github.no-problem-dev:kotlin-app-campaign:0.1.0") }
 ```
+
+While `campaign-core` is the only module, JitPack names the artifact after the repository.
 
 | Module | Contents | Depends on |
 |---|---|---|
