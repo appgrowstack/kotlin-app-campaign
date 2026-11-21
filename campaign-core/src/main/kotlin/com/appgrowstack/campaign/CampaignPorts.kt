@@ -87,9 +87,13 @@ public fun interface CampaignSetFetcher {
     public suspend fun fetch(etag: String?): CampaignFetchResult
 }
 
-/** `GET <endpoint><public key>` with `If-None-Match` (`api.appgrowstack.com`). */
+/**
+ * `GET <endpoint><public key>` with `If-None-Match` (`api.appgrowstack.com`) and the
+ * `AppGrowStack-Client` header [client] (build it with [CampaignSdk.client]).
+ */
 public class HttpCampaignSetFetcher(
     projectKey: String,
+    public val client: String,
     endpoint: String = DEFAULT_ENDPOINT,
     private val timeoutMillis: Int = 15_000,
 ) : CampaignSetFetcher {
@@ -104,6 +108,7 @@ public class HttpCampaignSetFetcher(
             connection.readTimeout = timeoutMillis
             connection.useCaches = false
             if (etag != null) connection.setRequestProperty("If-None-Match", etag)
+            connection.setRequestProperty(CampaignSdk.CLIENT_HEADER, client)
             when (val status = connection.responseCode) {
                 200 -> CampaignFetchResult.Fetched(connection.inputStream.bufferedReader().use { it.readText() }, connection.getHeaderField("ETag"))
                 304 -> CampaignFetchResult.NotModified

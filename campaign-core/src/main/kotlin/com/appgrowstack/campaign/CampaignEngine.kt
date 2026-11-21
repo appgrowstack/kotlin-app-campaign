@@ -60,7 +60,7 @@ public class CampaignEngine(
     assets: Set<String> = emptySet(),
     private val storage: CampaignStorage,
     private val record: (CampaignEvent) -> Unit,
-    private val fetcher: CampaignSetFetcher = HttpCampaignSetFetcher(projectKey),
+    private val fetcher: CampaignSetFetcher = HttpCampaignSetFetcher(projectKey, CampaignSdk.client(context.platform, context.appVersion)),
     private val texts: (String) -> String? = { null },
     public var isBusy: () -> Boolean = { false },
     private val link: (String) -> Unit = {},
