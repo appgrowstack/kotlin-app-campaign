@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-22
+
 ### Added
 
 - The `survey` type: `CampaignSurvey` (placement kind `SHEET`), `CampaignAction.submitAnswer()`, and
@@ -15,6 +17,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `CampaignContext(firstSeenAt = …)` (epoch milliseconds): the app's own first-launch date, from
   before it used this SDK. `days_since_first_seen` counts from the earlier of it and the date the
   engine stored.
+
+### Fixed
+
+- A cancelled coroutine (`CancellationException`) is thrown again. It was recorded as an unavailable
+  fact or a failed action.
 
 ## [0.3.0] - 2026-11-21
 

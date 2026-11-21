@@ -130,7 +130,7 @@ Then add it in the app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.appgrowstack:kotlin-app-campaign:0.3.0")
+    implementation("com.github.appgrowstack:kotlin-app-campaign:0.4.0")
 }
 ```
 
