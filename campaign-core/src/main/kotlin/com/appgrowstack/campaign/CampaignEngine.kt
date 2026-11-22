@@ -74,8 +74,8 @@ public class CampaignEngine(
     private val imageCache = CampaignImageCache(images)
     private var pendingUpdate: ObservedEvent? = null
     private var waiting: Waiting? = null
-    /** `paywall_closed` was heard in this launch: `survey` campaigns wait for the next launch. */
-    @Volatile private var paywallClosedThisLaunch = false
+    /** Events heard in this launch that some campaign's `not_after_in_launch` matches, oldest first. */
+    private val launchEvents = java.util.concurrent.CopyOnWriteArrayList<ObservedEvent>()
 
     private class Waiting(val campaign: Campaign, val trigger: String)
 
@@ -153,13 +153,16 @@ public class CampaignEngine(
     public suspend fun receive(event: ObservedEvent) {
         // campaign_* are the SDK's own; survey_* are answers, which never trigger anything.
         if (event.name.startsWith("campaign") || event.name.startsWith("survey_")) return
-        if (event.name == "paywall_closed") paywallClosedThisLaunch = true
+        // The events before this one. Kept before waiting for the set, so an event heard meanwhile counts.
+        // Before the first set is on hand, every event is kept (it is checked again against the set).
+        val earlier = launchEvents.toList()
+        if (set?.let { CampaignRules.remembersInLaunch(it, event) } != false) launchEvents.add(event)
         prepare()
         val selection = mutex.withLock {
             val current = state ?: return
             val set = set ?: return
             val fetchedAt = current.fetchedAt ?: return
-            val decision = CampaignRules.decide(input(set, current, fetchedAt, event)) { name ->
+            val decision = CampaignRules.decide(input(set, current, fetchedAt, event, earlier)) { name ->
                 facts[name]?.let { fact -> catching { fact.read() }.getOrNull() }
             }
             var next = current
@@ -189,14 +192,14 @@ public class CampaignEngine(
         waitAndShow(selection, event)
     }
 
-    private fun input(all: CampaignSet, state: CampaignStoredState, fetchedAt: Long, event: ObservedEvent): CampaignDecisionInput {
+    /** [heard]: the launch events to look at (all of them after waiting: events heard meanwhile count too). */
+    private fun input(set: CampaignSet, state: CampaignStoredState, fetchedAt: Long, event: ObservedEvent, heard: List<ObservedEvent>): CampaignDecisionInput {
         val now = clock.now()
-        // After the paywall was closed, a survey is not the next thing in this launch.
-        val set = if (paywallClosedThisLaunch) all.copy(campaigns = all.campaigns.filter { it.type != CampaignType.SURVEY }) else all
         return CampaignDecisionInput(
             set = set, registry = registry, fetchedAt = fetchedAt, now = now, context = context, person = person(),
             daysSinceFirstSeen = days(state.firstSeenAt, now), history = state.history, sessionShown = sessionShown,
-            event = event, sessionSeconds = (now - launchedAt) / 1000, texts = texts, imagesReady = imageCache.snapshot(),
+            event = event, launchEvents = heard.filter { CampaignRules.remembersInLaunch(set, it) },
+            sessionSeconds = (now - launchedAt) / 1000, texts = texts, imagesReady = imageCache.snapshot(),
             sides = state.sides,
         )
     }
@@ -254,7 +257,7 @@ public class CampaignEngine(
                     listOf(CampaignEvent.skipped(campaign.id, version, selection.trigger.id, CampaignSkipReason.WITHDRAWN)),
                 )
             } else {
-                CampaignRules.recheck(selection, input(onHand, current, now, event))
+                CampaignRules.recheck(selection, input(onHand, current, now, event, launchEvents.toList()))
             }
             val shown = when (recheck) {
                 is CampaignRecheck.NotShown -> {

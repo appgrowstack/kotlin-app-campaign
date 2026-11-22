@@ -94,6 +94,14 @@ public data class CampaignLimits(
     val afterDismissDays: Double,
     /** `null`: never again after the action completed. */
     val afterActionDays: Double?,
+    /** Not shown after any of these was heard earlier in this launch (`not_after_in_launch`). */
+    val notAfterInLaunch: List<CampaignLaunchEvent> = emptyList(),
+)
+
+/** The shape of an event heard earlier in this launch: the name, and `where` on its props. */
+public data class CampaignLaunchEvent(
+    val event: String,
+    val condition: CampaignCondition?,
 )
 
 public sealed interface CampaignTap {

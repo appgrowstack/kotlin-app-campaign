@@ -207,6 +207,7 @@ object CaseRunner {
             sessionSeconds = context["session_seconds"]?.jsonPrimitive?.long,
             history = history(json.getValue("history").jsonObject),
             sessionShown = json.getValue("history").jsonObject.getValue("session_shown").jsonPrimitive.int,
+            launchEvents = launchEvents(json.getValue("history").jsonObject),
             event = ObservedEvent(
                 eventJson.string("name"),
                 eventJson.getValue("props").jsonObject.mapValues { requireNotNull(CampaignValue.fromJson(it.value)) },
@@ -237,6 +238,7 @@ object CaseRunner {
                     now = input.now + busy * 1000L,
                     history = laterHistory?.let(::history) ?: input.history,
                     sessionShown = laterHistory?.getValue("session_shown")?.jsonPrimitive?.int ?: input.sessionShown,
+                    launchEvents = laterHistory?.let(::launchEvents) ?: input.launchEvents,
                 ))
             }
             shown = when (recheck) {
@@ -259,6 +261,15 @@ object CaseRunner {
 
     private fun reload(json: JsonObject, registry: CampaignRegistry): CampaignSet =
         (CampaignSetLoader.load(json.toString(), registry) as CampaignSetLoader.Result.Loaded).set
+
+    /** history.launch_events: none when left out. */
+    private fun launchEvents(json: JsonObject): List<ObservedEvent> = json["launch_events"]?.jsonArray.orEmpty().map { item ->
+        val obj = item.jsonObject
+        ObservedEvent(
+            obj.getValue("name").jsonPrimitive.content,
+            obj["props"]?.jsonObject.orEmpty().mapValues { requireNotNull(CampaignValue.fromJson(it.value)) },
+        )
+    }
 
     private fun history(json: JsonObject) = CampaignHistory(
         shownAt = json.getValue("shown_at").jsonArray.map(::time),
