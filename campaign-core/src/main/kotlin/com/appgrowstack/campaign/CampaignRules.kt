@@ -16,6 +16,11 @@ public data class CampaignDecisionInput(
     /** Campaigns shown since this launch. */
     val sessionShown: Int,
     val event: ObservedEvent,
+    /**
+     * Events heard earlier in this launch, oldest first. The engine keeps only those some campaign's
+     * `not_after_in_launch` matches ([CampaignRules.remembersInLaunch]).
+     */
+    val launchEvents: List<ObservedEvent> = emptyList(),
     /** Seconds since this launch, for the `session_seconds` fact. */
     val sessionSeconds: Long? = null,
     /** The app's strings table: `<text_key>.<value name>` → text in the device's language. */
@@ -237,6 +242,7 @@ public object CampaignRules {
             val days = limits.afterActionDays ?: return CampaignOutcome.Limited("after_action")
             if (now - completed < days * 86_400_000) return CampaignOutcome.Limited("after_action")
         }
+        if (input.launchEvents.any { matches(limits.notAfterInLaunch, it) }) return CampaignOutcome.Limited("not_after_in_launch")
         if (input.sessionShown >= input.set.policy.maxPerSession) return CampaignOutcome.Limited("max_per_session")
         val zone = input.context.timeZone
         val today = Instant.ofEpochMilli(now).atZone(zone).toLocalDate()
@@ -324,6 +330,18 @@ public object CampaignRules {
                 else -> null
             }
         }
+    }
+
+    /**
+     * Whether the engine keeps this event for the rest of the launch: only events some campaign's
+     * `not_after_in_launch` matches, handed to the next decisions as [CampaignDecisionInput.launchEvents].
+     */
+    public fun remembersInLaunch(set: CampaignSet, event: ObservedEvent): Boolean =
+        set.campaigns.any { matches(it.limits.notAfterInLaunch, event) }
+
+    /** The event has one of the names, and its props pass that `where`. A type mismatch does not match (and is not recorded). */
+    internal fun matches(forms: List<CampaignLaunchEvent>, event: ObservedEvent): Boolean = forms.any { form ->
+        form.event == event.name && (form.condition == null || Evaluator(event.props, null).evaluateNow(form.condition) == Match.YES)
     }
 
     /** Evaluates left to right; `all` stops at the first false, `any` at the first true. */
