@@ -409,7 +409,7 @@ class CampaignEngineTest {
              "starts_at":null,"ends_at":null,
              "triggers":[{"id":"after","event":"$trigger","where":null,"wait_seconds":0}],
              "audience":null,
-             "limits":{"max_shown":1,"min_hours_between":0,"after_dismiss_days":30,"after_action_days":null},
+             "limits":{"max_shown":1,"min_hours_between":0,"after_dismiss_days":30,"after_action_days":null,"not_after_in_launch":[{"event":"paywall_closed","where":null}]},
              "holdout":0,
              "show":{"placement":"survey","values":$values},
              "on_tap":{"action":"submit_answer","args":{}},

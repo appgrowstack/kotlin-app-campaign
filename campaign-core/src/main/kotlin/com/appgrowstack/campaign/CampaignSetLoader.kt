@@ -106,7 +106,7 @@ public object CampaignSetLoader {
         val endsAt = timestamp(obj, "ends_at")
         val triggers = triggersOf(obj["triggers"], registry)
         val audience = audienceOf(obj["audience"], registry)
-        val limits = limitsOf(obj["limits"])
+        val limits = limitsOf(obj["limits"], registry)
         val show = showOf(obj["show"], registry)
         val onTap = onTapOf(obj["on_tap"], registry, targets)
 
@@ -149,7 +149,7 @@ public object CampaignSetLoader {
         return CampaignCondition.parse(json, CampaignCondition.Companion.Kind.FACT, registry)
     }
 
-    private fun limitsOf(json: JsonElement?): CampaignLimits {
+    private fun limitsOf(json: JsonElement?, registry: CampaignRegistry): CampaignLimits {
         val obj = json as? JsonObject ?: invalid()
         val maxShown = int(obj["max_shown"])?.takeIf { it in 1..20 } ?: invalid()
         val perVersion = obj["max_per_app_version"]?.let { int(it)?.takeIf { n -> n in 1..20 } ?: invalid() }
@@ -157,7 +157,20 @@ public object CampaignSetLoader {
         val dismiss = number(obj["after_dismiss_days"])?.takeIf { it >= 0 } ?: invalid()
         val action = obj["after_action_days"] ?: invalid()
         val afterAction = if (action is JsonNull) null else number(action)?.takeIf { it >= 0 } ?: invalid()
-        return CampaignLimits(maxShown, perVersion, between, dismiss, afterAction)
+        return CampaignLimits(maxShown, perVersion, between, dismiss, afterAction, launchEventsOf(obj["not_after_in_launch"], registry))
+    }
+
+    /** `limits.not_after_in_launch`: none when left out. Each has the trigger's `event` and `where`. */
+    private fun launchEventsOf(json: JsonElement?, registry: CampaignRegistry): List<CampaignLaunchEvent> {
+        if (json == null) return emptyList()
+        val items = (json as? JsonArray)?.takeIf { it.size <= 20 } ?: invalid()
+        return items.map { item ->
+            val obj = item as? JsonObject ?: invalid()
+            val event = string(obj["event"])?.takeIf(CampaignNames::isEventName) ?: invalid()
+            val where = obj["where"] ?: invalid()
+            val condition = if (where is JsonNull) null else CampaignCondition.parse(where, CampaignCondition.Companion.Kind.PROP, registry)
+            CampaignLaunchEvent(event, condition)
+        }
     }
 
     private class Show(val placement: String, val values: Map<String, JsonElement>, val textKey: String?)
