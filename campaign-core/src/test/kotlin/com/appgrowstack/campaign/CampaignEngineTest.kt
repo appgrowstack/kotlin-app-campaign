@@ -155,6 +155,26 @@ class CampaignEngineTest {
     }
 
     @Test
+    fun aShownVariantIsRecordedOnItsEvents() = runTest {
+        // user-6 lands on the second variant (warm) of the shared table.
+        val h = Harness()
+        h.load(caseSet("variant-second"))
+        h.engine.receive(paywallClosed)
+
+        val offer = assertNotNull(h.engine.offer(trialOffer))
+        assertEquals("2日間、ぜんぶ使えます", offer.values.headline)
+        assertEquals("warm", offer.presentation.variant)
+        val eligible = h.recorder.named("campaign_eligible").single()
+        assertEquals(CampaignValue.of("warm"), eligible.params["variant"])
+        assertEquals(CampaignValue.of(5), eligible.params["policy_version"])
+        val shown = h.recorder.named("campaign_shown").single()
+        assertEquals(CampaignValue.of("warm"), shown.params["variant"])
+
+        h.engine.dismiss(offer.presentation, CampaignDismissal.SECONDARY)
+        assertEquals(CampaignValue.of("warm"), h.recorder.named("campaign_dismissed").single().params["variant"])
+    }
+
+    @Test
     fun aCancelledActionIsNotRecordedAsFailed() = runTest {
         val h = Harness()
         h.load(caseSet("show-after-paywall"))

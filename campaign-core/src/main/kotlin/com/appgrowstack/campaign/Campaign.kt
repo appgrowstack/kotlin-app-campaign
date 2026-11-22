@@ -122,7 +122,23 @@ public data class Campaign(
     val values: Map<String, JsonElement>,
     val textKey: String?,
     val onTap: CampaignTap,
+    /** The campaign's two variants (R10 P5), or `null` when it has none. The shown values lay the chosen variant's values over [values]. */
+    val variants: List<CampaignVariant>? = null,
 )
+
+/** One of a campaign's variants (R10 P5). [values] are laid over the campaign's own values, and [textKey] (when set) replaces the campaign's. */
+public data class CampaignVariant(
+    val id: String,
+    val values: Map<String, JsonElement>,
+    val textKey: String?,
+)
+
+/**
+ * How a campaign with variants splits the shown side between them (the set's `allocations`). [weights]
+ * follow the order of the variants; a weight of 0 is a stopped variant. [policyVersion] is sent as
+ * `policy_version` on `campaign_eligible`.
+ */
+public data class CampaignAllocation(val weights: List<Int>, val policyVersion: Int)
 
 /** The products' shared rules. [globalHoldout] applies the product-wide holdout (R10): a person in it is shown no campaign. */
 public data class CampaignPolicy(val maxPerSession: Int = 1, val maxPerDay: Int = 1, val cacheHours: Double = 72.0, val globalHoldout: Boolean = false)
@@ -136,6 +152,8 @@ public data class CampaignSet(
     val policy: CampaignPolicy,
     val targets: Map<String, CampaignTarget>,
     val campaigns: List<Campaign>,
+    /** Campaign id → its allocation. Only readable ones; a campaign with variants and no entry splits evenly. */
+    val allocations: Map<String, CampaignAllocation> = emptyMap(),
 )
 
 /** What the device knows about itself. The same values the manifest calls SDK facts. */

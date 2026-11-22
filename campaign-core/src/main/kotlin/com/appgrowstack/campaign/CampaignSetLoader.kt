@@ -62,7 +62,28 @@ public object CampaignSetLoader {
                 rejections.add(Rejection(rejectedId(item), rejection.reason))
             }
         }
-        return Result.Loaded(CampaignSet(project, version, policy(root["policy"]), targets, campaigns), rejections)
+        return Result.Loaded(CampaignSet(project, version, policy(root["policy"]), targets, campaigns, allocationsOf(root["allocations"], campaigns)), rejections)
+    }
+
+    /**
+     * The set's `allocations`: kept only for a campaign with variants, with one integer weight 0…1000 per
+     * variant (at least one above 0) and a `policy_version` of 0 or more. An entry that cannot be read is
+     * left out, so the campaign splits evenly.
+     */
+    private fun allocationsOf(json: JsonElement?, campaigns: List<Campaign>): Map<String, CampaignAllocation> {
+        val obj = json as? JsonObject ?: return emptyMap()
+        val allocations = linkedMapOf<String, CampaignAllocation>()
+        for (campaign in campaigns) {
+            val variants = campaign.variants ?: continue
+            val entry = obj[campaign.id] as? JsonObject ?: continue
+            val items = entry["weights"] as? JsonArray ?: continue
+            val policyVersion = int(entry["policy_version"])?.takeIf { it >= 0 } ?: continue
+            val weights = items.mapNotNull { int(it) }
+            if (weights.size != items.size || weights.size != variants.size) continue
+            if (weights.any { it !in 0..1000 } || weights.none { it > 0 }) continue
+            allocations[campaign.id] = CampaignAllocation(weights, policyVersion)
+        }
+        return allocations
     }
 
     private fun rejectedId(item: JsonElement): String =
@@ -108,13 +129,14 @@ public object CampaignSetLoader {
         val audience = audienceOf(obj["audience"], registry)
         val limits = limitsOf(obj["limits"])
         val show = showOf(obj["show"], registry)
+        val variants = variantsOf(obj["variants"], show, registry)
         val onTap = onTapOf(obj["on_tap"], registry, targets)
 
         return Campaign(
             id = id, type = type, status = status, title = title, priority = priority, platforms = platforms,
             appVersion = appVersion, channels = channels, startsAt = startsAt, endsAt = endsAt, triggers = triggers,
             audience = audience, limits = limits, holdout = holdout, placement = show.placement, values = show.values,
-            textKey = show.textKey, onTap = onTap,
+            textKey = show.textKey, onTap = onTap, variants = variants,
         )
     }
 
@@ -181,6 +203,31 @@ public object CampaignSetLoader {
             check(value, field.type, registry)
         }
         return Show(name, values, textKey)
+    }
+
+    /**
+     * The campaign's two variants, or `null` when it has none. Each variant's values are laid over the
+     * campaign's and checked against the placement as `show` is.
+     */
+    private fun variantsOf(json: JsonElement?, show: Show, registry: CampaignRegistry): List<CampaignVariant>? {
+        if (json == null) return null
+        val items = (json as? JsonArray)?.takeIf { it.size == 2 } ?: invalid()
+        val ids = mutableSetOf<String>()
+        return items.map { item ->
+            val obj = item as? JsonObject ?: invalid()
+            val id = string(obj["id"])?.takeIf { CampaignNames.isName(it) && it != "holdout" && it != "treatment" } ?: invalid()
+            val own = obj["values"] as? JsonObject ?: invalid()
+            if (!ids.add(id)) invalid()
+            val ownTextKey = obj["text_key"]?.let { string(it) ?: invalid() }
+            val merged = show.values + own
+            val textKey = ownTextKey ?: show.textKey
+            showOf(JsonObject(buildMap<String, JsonElement> {
+                put("placement", JsonPrimitive(show.placement))
+                put("values", JsonObject(merged))
+                if (textKey != null) put("text_key", JsonPrimitive(textKey))
+            }), registry)
+            CampaignVariant(id, own, ownTextKey)
+        }
     }
 
     private fun check(value: JsonElement, type: CampaignFieldType, registry: CampaignRegistry) {

@@ -45,6 +45,31 @@ public object Experiment {
         return Assignment(unit, side)
     }
 
+    public fun variantKey(project: String, person: String, campaign: String): String =
+        "$project:$person:$campaign:variant"
+
+    /**
+     * The variant of a campaign with variants (R10 P5), for a person on the shown side: the first index
+     * `i` with `weights[i] > 0` and `h × Σweights < Σweights[0..i] × 2^32`, where
+     * `h = hash32("<project>:<person>:<campaign>:variant")`. An internal device gets the first variant
+     * whose weight is above 0.
+     */
+    public fun variantIndex(project: String, person: String, campaign: String, weights: List<Int>, internal: Boolean): Int {
+        if (internal) return weights.indexOfFirst { it > 0 }.coerceAtLeast(0)
+        return weightedIndex(hash32(variantKey(project, person, campaign)), weights)
+    }
+
+    /** Integer math, so the server and both SDKs pick the same index. A weight of 0 is never picked. */
+    internal fun weightedIndex(h: Long, weights: List<Int>): Int {
+        val total = weights.sum().toLong()
+        var cumulative = 0L
+        for ((index, weight) in weights.withIndex()) {
+            cumulative += weight
+            if (weight > 0 && h * total < (cumulative shl 32)) return index
+        }
+        return weights.indexOfLast { it > 0 }.coerceAtLeast(0)
+    }
+
     /** The share of people in the product-wide holdout (R10). */
     public const val GLOBAL_HOLDOUT: Double = 0.05
 

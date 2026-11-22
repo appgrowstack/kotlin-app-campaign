@@ -18,6 +18,7 @@ Androidのアプリを出し直さずに、合う人に合う物をアプリの�
 - **出来事は型のまま。** 値は型を落としません（`CampaignValue`）。`3` と `3.0` は同じ数で、文字列の `"3"` は別の物です。比べると `type_mismatch` を記録します
 - **サーバーの値は最後に聞く。** 端末の条件が全部通った後にだけ、アプリのサーバーに聞きます
 - **どのキャンペーンにもholdout。** `hash32("<project>:<person>:<id>:holdout")` で、SwiftのSDKと同じ側になります。どちらの側も `campaign_eligible` を記録するので、2つの集まりを比べられます。記録にはその側を選んだ確率（`propensity`）と組のversion（`policy_version`）が付きます。組のpolicyの`global_holdout`が`true`のとき、`hash32("<project>:<person>:global_holdout") / 2³² < 0.05`の人にはどのキャンペーンも出さず（結果は`global_holdout`）、`campaign_eligible`も記録しません。自分の端末は入りません
+- **キャンペーンに案を2つ。** キャンペーンには `variants`（`id`・`values`・任意の `text_key`）を2つ書けます。案の値はキャンペーンの値に重ね、`show` と同じ決まりで読みます。出す側の人の案は `hash32("<project>:<person>:<id>:variant")` と組の `allocations` の重みで決まります（配分が無ければ等しい重み、重み0は止めた案）。自分の端末は止めていない最初の案です。`campaign_eligible`・`campaign_shown`・`campaign_tapped`・`campaign_dismissed`・`campaign_action_completed` に `variant` が付き、`propensity` と `policy_version` は案の確率と配分の版になります
 - **出さない側に倒れる。** 通信できないときは手元の組を `cache_hours` まで使い、その後は何も出しません。読めない組が届いたら前の組を使います。知らないプレースメント・動き・値・演算子・紹介先や型のずれは、そのキャンペーンだけを飛ばして `campaign_rejected` を1回記録します
 - **単体で動く。** `BundledCampaignSetFetcher` がアプリに同梱した組を読みます。ほかから取るときは、`CampaignSetFetcher` を満たす別の物に差し替えます
 - **中身はAndroidに依存しない。** `campaign-core` はKotlin/JVM（coroutinesとkotlinx.serialization）なので、headlessのテストからJVMで動かせます。テスト用の物は `com.appgrowstack.campaign.testing` にあります

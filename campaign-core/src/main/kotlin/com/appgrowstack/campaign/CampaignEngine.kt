@@ -270,7 +270,7 @@ public class CampaignEngine(
             val presentation = CampaignPresentation(
                 id = UUID.randomUUID().toString(), campaign = shown.campaign.id, setVersion = setVersion,
                 trigger = shown.trigger.id, placement = shown.campaign.placement, values = shown.values,
-                event = event, onTap = shown.campaign.onTap,
+                event = event, onTap = shown.campaign.onTap, variant = shown.variant,
             )
             val placement = placements[shown.campaign.placement]
             if (placement != null && runCatching { placement.decode(shown.values) }.isFailure) {
@@ -285,7 +285,7 @@ public class CampaignEngine(
             val next = current.copy(history = history)
             state = next
             storage.saveState(next)
-            record(CampaignEvent.shown(shown.campaign.id, setVersion, shown.trigger.id, shown.campaign.placement))
+            record(CampaignEvent.shown(shown.campaign.id, setVersion, shown.trigger.id, shown.campaign.placement, shown.variant))
             val isSystem = placement?.kind == CampaignPlacementKind.SYSTEM ||
                 registry.placements[shown.campaign.placement]?.kind == CampaignPlacementKind.SYSTEM
             if (isSystem) presentation else {
@@ -303,7 +303,7 @@ public class CampaignEngine(
     public suspend fun tap(presentation: CampaignPresentation) {
         if (!close(presentation)) return
         val target = if (presentation.onTap is CampaignTap.Link) "link" else "action"
-        record(CampaignEvent.tapped(presentation.campaign, presentation.setVersion, presentation.trigger, target))
+        record(CampaignEvent.tapped(presentation.campaign, presentation.setVersion, presentation.trigger, target, presentation.variant))
         complete(presentation)
     }
 
@@ -319,7 +319,7 @@ public class CampaignEngine(
                 }.getOrDefault(CampaignActionResult.FAILED)
             } ?: CampaignActionResult.FAILED)
         }
-        record(CampaignEvent.actionCompleted(presentation.campaign, presentation.setVersion, presentation.trigger, name, result))
+        record(CampaignEvent.actionCompleted(presentation.campaign, presentation.setVersion, presentation.trigger, name, result, presentation.variant))
         if (result != CampaignActionResult.COMPLETED) return
         update { it.updating(presentation.campaign) { record -> record.copy(actionCompletedAt = clock.now()) } }
     }
@@ -336,14 +336,14 @@ public class CampaignEngine(
             "set_version" to CampaignValue.of(presentation.setVersion),
             "choice" to CampaignValue.of(choice),
         )))
-        record(CampaignEvent.tapped(presentation.campaign, presentation.setVersion, presentation.trigger, "action"))
+        record(CampaignEvent.tapped(presentation.campaign, presentation.setVersion, presentation.trigger, "action", presentation.variant))
         complete(presentation)
     }
 
     /** Any way of closing without the primary button. */
     public suspend fun dismiss(presentation: CampaignPresentation, via: CampaignDismissal) {
         if (!close(presentation)) return
-        record(CampaignEvent.dismissed(presentation.campaign, presentation.setVersion, presentation.trigger, via))
+        record(CampaignEvent.dismissed(presentation.campaign, presentation.setVersion, presentation.trigger, via, presentation.variant))
         update { it.updating(presentation.campaign) { record -> record.copy(dismissedAt = clock.now()) } }
     }
 

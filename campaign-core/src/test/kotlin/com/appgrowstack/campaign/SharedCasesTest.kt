@@ -49,6 +49,7 @@ class SharedCasesTest {
         val expect = json.getValue("expect").jsonObject
         assertEquals(expect["show"], result.show?.let(::JsonPrimitive) ?: JsonNull, "show")
         assertEquals(expect["trigger"], result.trigger?.let(::JsonPrimitive) ?: JsonNull, "trigger")
+        expect["variant"]?.let { assertEquals(it, result.variant?.let(::JsonPrimitive) ?: JsonNull, "variant") }
         expect["values"]?.let { assertEquals(canonical(it), canonical(result.values), "values") }
         assertEquals(
             canonical(expect.getValue("outcomes")),
@@ -155,6 +156,7 @@ object CaseRunner {
     data class Result(
         var show: String? = null,
         var trigger: String? = null,
+        var variant: String? = null,
         var values: JsonElement = JsonNull,
         val outcomes: MutableMap<String, String> = linkedMapOf(),
         val records: MutableList<JsonElement> = mutableListOf(),
@@ -249,6 +251,7 @@ object CaseRunner {
         if (shown != null) {
             result.show = shown.campaign.id
             result.trigger = shown.trigger.id
+            result.variant = shown.variant
             result.values = JsonObject(shown.values.mapValues { it.value.toJson() })
         }
         return result

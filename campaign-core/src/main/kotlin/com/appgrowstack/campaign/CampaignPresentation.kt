@@ -10,6 +10,8 @@ public data class CampaignPresentation(
     val values: Map<String, CampaignResolvedValue>,
     val event: ObservedEvent,
     val onTap: CampaignTap,
+    /** The campaign's variant being shown (R10 P5), or `null` for a campaign without variants. */
+    val variant: String? = null,
 )
 
 /** The presentation as one placement's values, with the two ways out. */

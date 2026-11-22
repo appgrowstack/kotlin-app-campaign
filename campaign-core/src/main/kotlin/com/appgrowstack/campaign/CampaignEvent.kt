@@ -36,18 +36,32 @@ public enum class CampaignDismissal(public val code: String) {
  */
 public data class CampaignEvent(val name: String, val params: Map<String, CampaignValue>) {
     public companion object {
-        private fun base(campaign: String, setVersion: Int, trigger: String) = mapOf(
-            "campaign" to CampaignValue.of(campaign),
-            "set_version" to CampaignValue.of(setVersion),
-            "trigger" to CampaignValue.of(trigger),
-        )
+        /** `campaign`, `set_version`, `trigger`, and `variant` when the campaign has variants (R10 P5). */
+        private fun base(campaign: String, setVersion: Int, trigger: String, variant: String? = null): Map<String, CampaignValue> = buildMap {
+            put("campaign", CampaignValue.of(campaign))
+            put("set_version", CampaignValue.of(setVersion))
+            put("trigger", CampaignValue.of(trigger))
+            if (variant != null) put("variant", CampaignValue.of(variant))
+        }
 
-        /** [propensity] is the chance of [side]; `policy_version` is the set's version (R10). */
-        public fun eligible(campaign: String, setVersion: Int, trigger: String, side: Experiment.Side, propensity: Double): CampaignEvent =
-            CampaignEvent("campaign_eligible", base(campaign, setVersion, trigger) + mapOf(
+        /**
+         * [propensity] is the chance of [side] (of [variant], on the shown side of a campaign with variants);
+         * [policyVersion] is the set's version, or the allocation's for a campaign with variants (R10).
+         * [variant] only on the shown side of a campaign with variants.
+         */
+        public fun eligible(
+            campaign: String,
+            setVersion: Int,
+            trigger: String,
+            side: Experiment.Side,
+            propensity: Double,
+            variant: String? = null,
+            policyVersion: Int = setVersion,
+        ): CampaignEvent =
+            CampaignEvent("campaign_eligible", base(campaign, setVersion, trigger, variant) + mapOf(
                 "side" to CampaignValue.of(side.code),
                 "propensity" to CampaignValue.of(propensity),
-                "policy_version" to CampaignValue.of(setVersion),
+                "policy_version" to CampaignValue.of(policyVersion),
             ))
 
         public fun skipped(campaign: String, setVersion: Int, trigger: String, reason: CampaignSkipReason): CampaignEvent =
@@ -63,17 +77,24 @@ public data class CampaignEvent(val name: String, val params: Map<String, Campai
         public fun stale(setVersion: Int, hours: Int): CampaignEvent =
             CampaignEvent("campaigns_stale", mapOf("set_version" to CampaignValue.of(setVersion), "hours" to CampaignValue.of(hours)))
 
-        public fun shown(campaign: String, setVersion: Int, trigger: String, placement: String): CampaignEvent =
-            CampaignEvent("campaign_shown", base(campaign, setVersion, trigger) + ("placement" to CampaignValue.of(placement)))
+        public fun shown(campaign: String, setVersion: Int, trigger: String, placement: String, variant: String? = null): CampaignEvent =
+            CampaignEvent("campaign_shown", base(campaign, setVersion, trigger, variant) + ("placement" to CampaignValue.of(placement)))
 
-        public fun tapped(campaign: String, setVersion: Int, trigger: String, target: String): CampaignEvent =
-            CampaignEvent("campaign_tapped", base(campaign, setVersion, trigger) + ("target" to CampaignValue.of(target)))
+        public fun tapped(campaign: String, setVersion: Int, trigger: String, target: String, variant: String? = null): CampaignEvent =
+            CampaignEvent("campaign_tapped", base(campaign, setVersion, trigger, variant) + ("target" to CampaignValue.of(target)))
 
-        public fun dismissed(campaign: String, setVersion: Int, trigger: String, via: CampaignDismissal): CampaignEvent =
-            CampaignEvent("campaign_dismissed", base(campaign, setVersion, trigger) + ("via" to CampaignValue.of(via.code)))
+        public fun dismissed(campaign: String, setVersion: Int, trigger: String, via: CampaignDismissal, variant: String? = null): CampaignEvent =
+            CampaignEvent("campaign_dismissed", base(campaign, setVersion, trigger, variant) + ("via" to CampaignValue.of(via.code)))
 
-        public fun actionCompleted(campaign: String, setVersion: Int, trigger: String, action: String, result: CampaignActionResult): CampaignEvent =
-            CampaignEvent("campaign_action_completed", base(campaign, setVersion, trigger) + mapOf(
+        public fun actionCompleted(
+            campaign: String,
+            setVersion: Int,
+            trigger: String,
+            action: String,
+            result: CampaignActionResult,
+            variant: String? = null,
+        ): CampaignEvent =
+            CampaignEvent("campaign_action_completed", base(campaign, setVersion, trigger, variant) + mapOf(
                 "action" to CampaignValue.of(action), "result" to CampaignValue.of(result.code),
             ))
 

@@ -30,6 +30,11 @@ public data class CampaignSelection(
     val campaign: Campaign,
     val trigger: CampaignTrigger,
     val values: Map<String, CampaignResolvedValue>,
+    /**
+     * The variant's id (R10 P5), or `null` for a campaign without variants. Sent as `variant` on
+     * `campaign_shown`, `campaign_tapped`, `campaign_dismissed` and `campaign_action_completed`.
+     */
+    val variant: String? = null,
 )
 
 public data class CampaignDecision(
@@ -44,7 +49,8 @@ public data class CampaignDecision(
     /** Every campaign that passed step 8, with its side. Held-out ones count as shown. */
     val eligible: List<Eligible>,
 ) {
-    public data class Eligible(val campaign: String, val trigger: String, val side: Experiment.Side)
+    /** [variant]: the variant chosen on the shown side; `null` for a campaign without variants and for the holdout side. */
+    public data class Eligible(val campaign: String, val trigger: String, val side: Experiment.Side, val variant: String? = null)
 }
 
 /** After waiting: show, or why not (C4). */
@@ -79,7 +85,7 @@ public object CampaignRules {
         // The product-wide holdout (R10), when the set applies it. The owner's device is always shown.
         val inGlobalHoldout = set.policy.globalHoldout && !input.context.internalDevice &&
             Experiment.globalUnit(set.project, input.person) < Experiment.GLOBAL_HOLDOUT
-        val candidates = mutableListOf<Pair<Campaign, CampaignTrigger>>()
+        val candidates = mutableListOf<Triple<Campaign, CampaignTrigger, CampaignVariant?>>()
 
         for (campaign in set.campaigns) {
             inactive(campaign, input)?.let { outcomes[campaign.id] = it; continue }
@@ -110,34 +116,50 @@ public object CampaignRules {
             // campaign's own counts and SRM stay clean.
             if (inGlobalHoldout) { outcomes[campaign.id] = CampaignOutcome.GlobalHoldout; continue }
 
+            // Both sides are recorded as eligible, with the chance of that side. On the shown side of a
+            // campaign with variants, the variant is chosen too and the chance is the variant's;
+            // `policy_version` is then the allocation's.
             val side = side(campaign, input)
+            val allocation = allocationOf(campaign, set)
+            val variants = campaign.variants
+            val index = if (side == Experiment.Side.TREATMENT && allocation != null && variants != null) {
+                Experiment.variantIndex(set.project, input.person, campaign.id, allocation.weights, input.context.internalDevice)
+            } else {
+                null
+            }
+            val variant = if (index != null && variants != null) variants[index] else null
             val propensity = when {
                 input.context.internalDevice -> if (side == Experiment.Side.TREATMENT) 1.0 else 0.0
                 side == Experiment.Side.HOLDOUT -> campaign.holdout
+                index != null && allocation != null -> (1 - campaign.holdout) * allocation.weights[index] / allocation.weights.sum()
                 else -> 1 - campaign.holdout
             }
-            records.add(CampaignEvent.eligible(campaign.id, version, trigger.id, side, Experiment.round6(propensity)))
-            eligible.add(CampaignDecision.Eligible(campaign.id, trigger.id, side))
+            records.add(CampaignEvent.eligible(
+                campaign.id, version, trigger.id, side, Experiment.round6(propensity),
+                variant = variant?.id, policyVersion = allocation?.policyVersion ?: version,
+            ))
+            eligible.add(CampaignDecision.Eligible(campaign.id, trigger.id, side, variant?.id))
             if (side == Experiment.Side.HOLDOUT) {
                 outcomes[campaign.id] = CampaignOutcome.HeldOut
                 continue
             }
-            candidates.add(campaign to trigger)
+            candidates.add(Triple(campaign, trigger, variant))
         }
 
         val sorted = candidates.sortedWith { a, b -> compareRank(a.first, b.first) }
         val winner = sorted.firstOrNull()
             ?: return CampaignDecision(null, outcomes, records, reader.serverRead.toList(), eligible)
-        for ((loser, loserTrigger) in sorted.drop(1)) {
+        for ((loser, loserTrigger, _) in sorted.drop(1)) {
             outcomes[loser.id] = CampaignOutcome.Skipped(CampaignSkipReason.LOWER_PRIORITY)
             records.add(CampaignEvent.skipped(loser.id, version, loserTrigger.id, CampaignSkipReason.LOWER_PRIORITY))
         }
-        val (campaign, trigger) = winner
+        val (campaign, trigger, variant) = winner
         var shown: CampaignSelection? = null
-        when (val values = resolve(campaign, input)) {
+        // Step 10 with the chosen variant's values over the campaign's.
+        when (val values = resolve(campaign, input, variant)) {
             is Resolved.Values -> {
                 outcomes[campaign.id] = CampaignOutcome.Show
-                shown = CampaignSelection(campaign, trigger, values.values)
+                shown = CampaignSelection(campaign, trigger, values.values, variant?.id)
             }
             is Resolved.Skip -> {
                 outcomes[campaign.id] = CampaignOutcome.Skipped(values.reason)
@@ -163,8 +185,10 @@ public object CampaignRules {
         inactive(campaign, input)?.let { return CampaignRecheck.NotShown(it, emptyList()) }
         val matched = matchTrigger(campaign, input.event).first ?: return CampaignRecheck.NotShown(CampaignOutcome.NoTrigger, emptyList())
         limit(campaign, input)?.let { return CampaignRecheck.NotShown(it, emptyList()) }
-        return when (val values = resolve(campaign, input)) {
-            is Resolved.Values -> CampaignRecheck.Show(CampaignSelection(campaign, matched, values.values))
+        // The variant chosen before waiting stays; it is looked up in the set as it is now.
+        val variant = campaign.variants?.firstOrNull { it.id == selection.variant }
+        return when (val values = resolve(campaign, input, variant)) {
+            is Resolved.Values -> CampaignRecheck.Show(CampaignSelection(campaign, matched, values.values, variant?.id))
             is Resolved.Skip -> CampaignRecheck.NotShown(
                 CampaignOutcome.Skipped(values.reason),
                 listOf(CampaignEvent.skipped(id, input.set.version, matched.id, values.reason)),
@@ -177,6 +201,15 @@ public object CampaignRules {
         CampaignOutcome.Skipped(CampaignSkipReason.BUSY),
         listOf(CampaignEvent.skipped(selection.campaign.id, setVersion, selection.trigger.id, CampaignSkipReason.BUSY)),
     )
+
+    /**
+     * The campaign's allocation: the set's entry, else equal weights with the set's version. `null` for a
+     * campaign without variants.
+     */
+    public fun allocationOf(campaign: Campaign, set: CampaignSet): CampaignAllocation? {
+        val variants = campaign.variants ?: return null
+        return set.allocations[campaign.id] ?: CampaignAllocation(variants.map { 1 }, set.version)
+    }
 
     /** `priority` high first, then the newer `starts_at` (none counts as oldest), then the id. */
     public fun compareRank(lhs: Campaign, rhs: Campaign): Int {
@@ -250,19 +283,24 @@ public object CampaignRules {
         data class Skip(val reason: CampaignSkipReason) : Resolved
     }
 
-    /** Step 10: picks the language and checks images. */
-    public fun resolveValues(campaign: Campaign, input: CampaignDecisionInput): Map<String, CampaignResolvedValue>? =
-        (resolve(campaign, input) as? Resolved.Values)?.values
+    /**
+     * Step 10: picks the language and checks images. With a [variant], its values are laid over the
+     * campaign's and its `text_key` (when set) is used.
+     */
+    public fun resolveValues(campaign: Campaign, input: CampaignDecisionInput, variant: CampaignVariant? = null): Map<String, CampaignResolvedValue>? =
+        (resolve(campaign, input, variant) as? Resolved.Values)?.values
 
-    private fun resolve(campaign: Campaign, input: CampaignDecisionInput): Resolved {
+    private fun resolve(campaign: Campaign, input: CampaignDecisionInput, variant: CampaignVariant? = null): Resolved {
         val placement = input.registry.placements[campaign.placement] ?: return Resolved.Skip(CampaignSkipReason.MISSING_LOCALE)
+        val values = if (variant != null) campaign.values + variant.values else campaign.values
+        val textKey = variant?.textKey ?: campaign.textKey
         val resolved = linkedMapOf<String, CampaignResolvedValue>()
         for ((name, field) in placement.fields) {
-            val raw = campaign.values[name]
+            val raw = values[name]
             when (field.type) {
                 CampaignFieldType.TEXT -> {
                     val text = pickText(raw as? kotlinx.serialization.json.JsonObject, input.context.lang)
-                        ?: campaign.textKey?.let { input.texts("$it.$name") }
+                        ?: textKey?.let { input.texts("$it.$name") }
                     if (text != null) resolved[name] = CampaignResolvedValue.Text(text)
                     else if (field.required) return Resolved.Skip(CampaignSkipReason.MISSING_LOCALE)
                 }
