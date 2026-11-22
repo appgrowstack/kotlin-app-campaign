@@ -42,8 +42,13 @@ public data class CampaignEvent(val name: String, val params: Map<String, Campai
             "trigger" to CampaignValue.of(trigger),
         )
 
-        public fun eligible(campaign: String, setVersion: Int, trigger: String, side: Experiment.Side): CampaignEvent =
-            CampaignEvent("campaign_eligible", base(campaign, setVersion, trigger) + ("side" to CampaignValue.of(side.code)))
+        /** [propensity] is the chance of [side]; `policy_version` is the set's version (R10). */
+        public fun eligible(campaign: String, setVersion: Int, trigger: String, side: Experiment.Side, propensity: Double): CampaignEvent =
+            CampaignEvent("campaign_eligible", base(campaign, setVersion, trigger) + mapOf(
+                "side" to CampaignValue.of(side.code),
+                "propensity" to CampaignValue.of(propensity),
+                "policy_version" to CampaignValue.of(setVersion),
+            ))
 
         public fun skipped(campaign: String, setVersion: Int, trigger: String, reason: CampaignSkipReason): CampaignEvent =
             CampaignEvent("campaign_skipped", base(campaign, setVersion, trigger) + ("reason" to CampaignValue.of(reason.code)))
@@ -88,6 +93,8 @@ public sealed interface CampaignOutcome {
     public data class Limited(val what: String) : CampaignOutcome { override val code: String get() = "limited:$what" }
     public data object Audience : CampaignOutcome { override val code: String = "audience" }
     public data object FactUnavailable : CampaignOutcome { override val code: String = "fact_unavailable" }
+    /** The person is in the product-wide holdout (R10) and is shown no campaign. */
+    public data object GlobalHoldout : CampaignOutcome { override val code: String = "global_holdout" }
     public data object HeldOut : CampaignOutcome { override val code: String = "held_out" }
     public data class Skipped(val reason: CampaignSkipReason) : CampaignOutcome { override val code: String get() = reason.code }
     public data object Show : CampaignOutcome { override val code: String = "show" }

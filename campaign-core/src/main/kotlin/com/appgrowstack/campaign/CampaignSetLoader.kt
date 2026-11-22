@@ -75,6 +75,7 @@ public object CampaignSetLoader {
             maxPerSession = int(obj["max_per_session"])?.takeIf { it >= 1 } ?: defaults.maxPerSession,
             maxPerDay = int(obj["max_per_day"])?.takeIf { it >= 1 } ?: defaults.maxPerDay,
             cacheHours = number(obj["cache_hours"])?.takeIf { it > 0 } ?: defaults.cacheHours,
+            globalHoldout = (obj["global_holdout"] as? JsonPrimitive)?.takeIf { !it.isString }?.content == "true",
         )
     }
 

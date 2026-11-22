@@ -27,7 +27,11 @@ on the same holdout side.
 - **Server facts asked last.** A fact from your own server is requested only after every device
   condition has passed
 - **A holdout for every campaign.** `hash32("<project>:<person>:<id>:holdout")`, the same as the
-  Swift SDK. Both sides record `campaign_eligible`, so the two groups are comparable
+  Swift SDK. Both sides record `campaign_eligible`, so the two groups are comparable, with the
+  chance of that side (`propensity`) and the set's version (`policy_version`). When the set's policy
+  has `global_holdout: true`, a person with `hash32("<project>:<person>:global_holdout") / 2³² < 0.05`
+  is shown no campaign (outcome `global_holdout`) and records no `campaign_eligible`. Your own devices
+  are never in it
 - **Fails closed.** Offline, the set on hand is used for `cache_hours`, then nothing is shown. An
   unreadable set keeps the previous one. An unknown placement, action, fact, operator, target or a
   wrong type skips that campaign and is reported once as `campaign_rejected`

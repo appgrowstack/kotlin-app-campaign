@@ -76,6 +76,9 @@ public object CampaignRules {
         }
 
         val reader = FactReader(input, facts)
+        // The product-wide holdout (R10), when the set applies it. The owner's device is always shown.
+        val inGlobalHoldout = set.policy.globalHoldout && !input.context.internalDevice &&
+            Experiment.globalUnit(set.project, input.person) < Experiment.GLOBAL_HOLDOUT
         val candidates = mutableListOf<Pair<Campaign, CampaignTrigger>>()
 
         for (campaign in set.campaigns) {
@@ -103,8 +106,17 @@ public object CampaignRules {
                 }
             }
 
+            // The product-wide holdout first: not shown and not recorded as eligible, so the
+            // campaign's own counts and SRM stay clean.
+            if (inGlobalHoldout) { outcomes[campaign.id] = CampaignOutcome.GlobalHoldout; continue }
+
             val side = side(campaign, input)
-            records.add(CampaignEvent.eligible(campaign.id, version, trigger.id, side))
+            val propensity = when {
+                input.context.internalDevice -> if (side == Experiment.Side.TREATMENT) 1.0 else 0.0
+                side == Experiment.Side.HOLDOUT -> campaign.holdout
+                else -> 1 - campaign.holdout
+            }
+            records.add(CampaignEvent.eligible(campaign.id, version, trigger.id, side, Experiment.round6(propensity)))
             eligible.add(CampaignDecision.Eligible(campaign.id, trigger.id, side))
             if (side == Experiment.Side.HOLDOUT) {
                 outcomes[campaign.id] = CampaignOutcome.HeldOut

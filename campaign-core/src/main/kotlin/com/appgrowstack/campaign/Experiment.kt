@@ -45,6 +45,13 @@ public object Experiment {
         return Assignment(unit, side)
     }
 
+    /** The share of people in the product-wide holdout (R10). */
+    public const val GLOBAL_HOLDOUT: Double = 0.05
+
+    /** `hash32("<project>:<person>:global_holdout") / 2^32`, in `[0, 1)`. */
+    public fun globalUnit(project: String, person: String): Double =
+        hash32("$project:$person:global_holdout") / 4_294_967_296.0
+
     public data class Reach(val counted: Boolean, val reached: Boolean)
 
     /**

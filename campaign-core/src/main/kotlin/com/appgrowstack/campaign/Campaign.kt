@@ -124,7 +124,8 @@ public data class Campaign(
     val onTap: CampaignTap,
 )
 
-public data class CampaignPolicy(val maxPerSession: Int = 1, val maxPerDay: Int = 1, val cacheHours: Double = 72.0)
+/** The products' shared rules. [globalHoldout] applies the product-wide holdout (R10): a person in it is shown no campaign. */
+public data class CampaignPolicy(val maxPerSession: Int = 1, val maxPerDay: Int = 1, val cacheHours: Double = 72.0, val globalHoldout: Boolean = false)
 
 /** A product a cross_promo campaign points to (the set's `targets`). */
 public data class CampaignTarget(val name: String, val ascAppId: String?, val playPackage: String?)
