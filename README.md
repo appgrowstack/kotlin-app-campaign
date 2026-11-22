@@ -146,7 +146,7 @@ Then add it in the app's `build.gradle.kts`:
 
 ```kotlin
 dependencies {
-    implementation("com.github.appgrowstack:kotlin-app-campaign:0.5.0")
+    implementation("com.github.appgrowstack:kotlin-app-campaign:0.6.0")
 }
 ```
 
