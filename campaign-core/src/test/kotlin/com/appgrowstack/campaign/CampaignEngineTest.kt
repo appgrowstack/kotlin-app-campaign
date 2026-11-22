@@ -289,7 +289,11 @@ class CampaignEngineTest {
     @Test
     fun aSystemPlacementRunsItsActionWithoutATap() = runTest {
         val h = Harness()
-        h.load(caseSet("type-review-ask-show"))
+        // 表の組は iOS の公開だけを持つ。このエンジンは Android（channel play）なので、同じ公開を android にも写して version_age_days を出す
+        h.load(caseSet("type-review-ask-show") { set ->
+            val releases = set.getValue("releases").jsonObject
+            JsonObject(set + ("releases" to JsonObject(releases + ("android" to releases.getValue("ios")))))
+        })
         h.engine.receive(ObservedEvent("exchange_completed", mapOf("count" to CampaignValue.of(3))))
 
         assertNull(h.engine.presenting.value)

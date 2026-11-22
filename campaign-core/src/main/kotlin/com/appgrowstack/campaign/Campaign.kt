@@ -163,7 +163,15 @@ public data class CampaignSet(
     val campaigns: List<Campaign>,
     /** Campaign id → its allocation. Only readable ones; a campaign with variants and no entry splits evenly. */
     val allocations: Map<String, CampaignAllocation> = emptyMap(),
+    /**
+     * Platform → the released versions and when each was released (the set's `releases`, newest first, up to 20).
+     * Rows that cannot be read are left out. `version_age_days` reads this.
+     */
+    val releases: Map<String, List<CampaignRelease>> = emptyMap(),
 )
+
+/** One released version in a set's `releases`. [releasedAt] is epoch ms; [halted] is a staged rollout that was stopped. */
+public data class CampaignRelease(val version: CampaignVersion, val releasedAt: Long, val halted: Boolean)
 
 /** What the device knows about itself. The same values the manifest calls SDK facts. */
 public data class CampaignContext(

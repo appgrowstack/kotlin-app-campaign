@@ -213,6 +213,7 @@ public data class CampaignRegistry(
             "region" to FactSpec(CampaignFactType.STRING, CampaignFactSource.DEVICE),
             "days_since_first_seen" to FactSpec(CampaignFactType.INT, CampaignFactSource.DEVICE),
             "session_seconds" to FactSpec(CampaignFactType.INT, CampaignFactSource.DEVICE),
+            "version_age_days" to FactSpec(CampaignFactType.INT, CampaignFactSource.DEVICE),
         )
     }
 }

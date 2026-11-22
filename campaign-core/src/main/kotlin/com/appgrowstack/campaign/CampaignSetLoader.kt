@@ -62,7 +62,28 @@ public object CampaignSetLoader {
                 rejections.add(Rejection(rejectedId(item), rejection.reason))
             }
         }
-        return Result.Loaded(CampaignSet(project, version, policy(root["policy"]), targets, campaigns, allocationsOf(root["allocations"], campaigns)), rejections)
+        return Result.Loaded(
+            CampaignSet(project, version, policy(root["policy"]), targets, campaigns, allocationsOf(root["allocations"], campaigns), releasesOf(root["releases"])),
+            rejections,
+        )
+    }
+
+    /**
+     * The set's `releases`: platform → rows of `version`, `released_at` (epoch ms) and `halted`. A row that cannot
+     * be read is left out; the set is still used (only `version_age_days` is then unavailable).
+     */
+    private fun releasesOf(json: JsonElement?): Map<String, List<CampaignRelease>> {
+        val obj = json as? JsonObject ?: return emptyMap()
+        return obj.mapNotNull { (platform, value) ->
+            val items = value as? JsonArray ?: return@mapNotNull null
+            platform to items.mapNotNull { item ->
+                val row = item as? JsonObject ?: return@mapNotNull null
+                val version = string(row["version"])?.let(CampaignVersion::parseAppVersion) ?: return@mapNotNull null
+                val releasedAt = (CampaignValue.fromJson(row["released_at"]) as? CampaignValue.IntValue)?.value ?: return@mapNotNull null
+                val halted = (row["halted"] as? JsonPrimitive)?.takeIf { !it.isString }?.content?.toBooleanStrictOrNull() ?: return@mapNotNull null
+                CampaignRelease(version, releasedAt, halted)
+            }
+        }.toMap()
     }
 
     /**

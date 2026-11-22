@@ -95,7 +95,7 @@ public object CampaignRules {
         for (campaign in set.campaigns) {
             inactive(campaign, input)?.let { outcomes[campaign.id] = it; continue }
 
-            val (trigger, triggerMismatch) = matchTrigger(campaign, input.event)
+            val (trigger, triggerMismatch) = matchTrigger(campaign, input)
             if (triggerMismatch) records.add(CampaignEvent.rejected(campaign.id, version, CampaignRejectReason.TYPE_MISMATCH))
             if (trigger == null) { outcomes[campaign.id] = CampaignOutcome.NoTrigger; continue }
 
@@ -188,7 +188,7 @@ public object CampaignRules {
                 listOf(CampaignEvent.skipped(id, input.set.version, trigger, CampaignSkipReason.WITHDRAWN)),
             )
         inactive(campaign, input)?.let { return CampaignRecheck.NotShown(it, emptyList()) }
-        val matched = matchTrigger(campaign, input.event).first ?: return CampaignRecheck.NotShown(CampaignOutcome.NoTrigger, emptyList())
+        val matched = matchTrigger(campaign, input).first ?: return CampaignRecheck.NotShown(CampaignOutcome.NoTrigger, emptyList())
         limit(campaign, input)?.let { return CampaignRecheck.NotShown(it, emptyList()) }
         // The variant chosen before waiting stays; it is looked up in the set as it is now.
         val variant = campaign.variants?.firstOrNull { it.id == selection.variant }
@@ -235,17 +235,45 @@ public object CampaignRules {
         return Experiment.assign(input.set.project, input.person, campaign.id, campaign.holdout, internal = false).side
     }
 
-    private fun matchTrigger(campaign: Campaign, event: ObservedEvent): Pair<CampaignTrigger?, Boolean> {
+    private fun matchTrigger(campaign: Campaign, input: CampaignDecisionInput): Pair<CampaignTrigger?, Boolean> {
+        val event = input.event
         var mismatch = false
         for (trigger in campaign.triggers) {
             if (trigger.event != event.name) continue
-            val condition = trigger.condition ?: return trigger to mismatch
-            val evaluator = Evaluator(event.props, null)
-            val match = evaluator.evaluateNow(condition)
-            mismatch = mismatch || evaluator.mismatch
-            if (match == Match.YES) return trigger to mismatch
+            val condition = trigger.condition
+            if (condition != null) {
+                val evaluator = Evaluator(event.props, null)
+                val match = evaluator.evaluateNow(condition)
+                mismatch = mismatch || evaluator.mismatch
+                if (match != Match.YES) continue
+            }
+            // `app_updated` matches only when the version before the update is older than the range's `min`:
+            // a person who already had what the campaign announces is not shown it.
+            if (trigger.event == APP_UPDATED && !updatedAcross(campaign, input)) continue
+            return trigger to mismatch
         }
         return null to mismatch
+    }
+
+    private const val APP_UPDATED = "app_updated"
+
+    /** `from_version` of the `app_updated` event is older than the `min` of the campaign's range for this platform. */
+    private fun updatedAcross(campaign: Campaign, input: CampaignDecisionInput): Boolean {
+        val range = campaign.appVersion[input.context.platform] ?: return false
+        val text = (input.event.props["from_version"] as? CampaignValue.StringValue)?.value ?: return false
+        val from = CampaignVersion.parse(text) ?: return false
+        return from < range.min
+    }
+
+    /**
+     * Days since the running version was released (`version_age_days`): whole days from its `released_at`
+     * in the set's `releases` for this platform. `null` when the version is not there or its rollout was halted.
+     */
+    public fun versionAgeDays(set: CampaignSet, platform: String, appVersion: String, now: Long): Int? {
+        val version = CampaignVersion.parse(appVersion) ?: return null
+        val release = set.releases[platform]?.firstOrNull { it.version == version } ?: return null
+        if (release.halted) return null
+        return maxOf(0L, Math.floorDiv(now - release.releasedAt, 86_400_000L)).toInt()
     }
 
     private fun inactive(campaign: Campaign, input: CampaignDecisionInput): CampaignOutcome? {
@@ -365,6 +393,7 @@ public object CampaignRules {
                 "region" -> CampaignValue.of(context.region)
                 "days_since_first_seen" -> CampaignValue.of(input.daysSinceFirstSeen)
                 "session_seconds" -> input.sessionSeconds?.let(CampaignValue::of)
+                "version_age_days" -> versionAgeDays(input.set, context.platform, context.appVersion, input.now)?.let(CampaignValue::of)
                 else -> null
             }
         }
