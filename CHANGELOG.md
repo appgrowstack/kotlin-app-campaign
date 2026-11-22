@@ -27,6 +27,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Breaking:** a campaign's `app_version` is the range core resolved from what it `requires`: per OS
+  `{ "min": "3.3.0", "exclude": ["4.0.0"] }` (versions of two or three groups of digits; other keys
+  ignored). It is required; `{}` shows on no OS. The string form (`">=3.3.0"`) rejects the campaign
+  as `invalid`. `VersionRange` is replaced by `ResolvedVersionRange(min, exclude)`, and
+  `CampaignVersion.parseAppVersion` reads a version as a set writes it. The set's top-level
+  `releases` is ignored.
 - **Breaking:** the engine no longer leaves out `survey` campaigns by itself after `paywall_closed`.
   A survey campaign writes `"not_after_in_launch": [{ "event": "paywall_closed", "where": null }]`
   (the `survey` template's check requires it).

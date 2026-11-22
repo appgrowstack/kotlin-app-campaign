@@ -117,11 +117,11 @@ public object CampaignSetLoader {
         string(obj["purpose"]) ?: invalid()
         val priority = int(obj["priority"])?.takeIf { it in 0..1000 } ?: invalid()
         val platforms = (obj["platforms"] as? JsonArray)?.map { string(it) ?: invalid() }?.takeIf { it.isNotEmpty() } ?: invalid()
-        val versionObject = (obj["app_version"] as? JsonObject)?.takeIf { it.isNotEmpty() } ?: invalid()
+        val versionObject = obj["app_version"] as? JsonObject ?: invalid()
         if ((obj["goals"] as? JsonArray).isNullOrEmpty()) invalid()
         val holdout = number(obj["holdout"])?.takeIf { it in 0.0..0.5 } ?: invalid()
 
-        val appVersion = versionObject.mapValues { (_, value) -> string(value)?.let(VersionRange::parse) ?: invalid() }
+        val appVersion = versionObject.mapValues { (_, value) -> resolvedRange(value) }
         val channels = channelsOf(obj["channels"])
         val startsAt = timestamp(obj, "starts_at")
         val endsAt = timestamp(obj, "ends_at")
@@ -139,6 +139,17 @@ public object CampaignSetLoader {
             textKey = show.textKey, onTap = onTap, variants = variants,
         )
     }
+
+    /** One OS's `{ "min": …, "exclude": [ … ] }`. Other keys are ignored. */
+    private fun resolvedRange(json: JsonElement): ResolvedVersionRange {
+        val obj = json as? JsonObject ?: invalid()
+        val min = appVersion(obj["min"])
+        val exclude = (obj["exclude"] as? JsonArray ?: invalid()).map(::appVersion)
+        return ResolvedVersionRange(min, exclude)
+    }
+
+    private fun appVersion(json: JsonElement?): CampaignVersion =
+        string(json)?.let(CampaignVersion::parseAppVersion) ?: invalid()
 
     private fun channelsOf(json: JsonElement?): List<String> {
         if (json == null) return listOf("appstore", "play")

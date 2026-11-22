@@ -18,26 +18,18 @@ public data class CampaignVersion(val major: Int, val minor: Int = 0, val patch:
             while (numbers.size < 3) numbers.add(0)
             return CampaignVersion(numbers[0], numbers[1], numbers[2])
         }
+
+        /** A version as a set writes it: two or three groups of digits (`3.3`, `3.3.0`). */
+        public fun parseAppVersion(text: String): CampaignVersion? =
+            if (text.split(".").size in 2..3) parse(text) else null
     }
 }
 
-/** `">=3.3.0"` or `">=3.3.0 <4.0.0"`, and nothing else. */
-public data class VersionRange(val lower: CampaignVersion, val upper: CampaignVersion?) {
+/**
+ * One OS's range of a set campaign's `app_version`, resolved by core from what the campaign `requires`:
+ * the lowest version that has it, minus the versions that lack it. The device only checks its version.
+ */
+public data class ResolvedVersionRange(val min: CampaignVersion, val exclude: List<CampaignVersion>) {
     public operator fun contains(version: CampaignVersion): Boolean =
-        version >= lower && (upper == null || version < upper)
-
-    public companion object {
-        public fun parse(text: String): VersionRange? {
-            val parts = text.split(" ")
-            if (parts.size !in 1..2 || !parts[0].startsWith(">=")) return null
-            val lower = strict(parts[0].removePrefix(">=")) ?: return null
-            if (parts.size == 1) return VersionRange(lower, null)
-            if (!parts[1].startsWith("<")) return null
-            val upper = strict(parts[1].removePrefix("<")) ?: return null
-            return VersionRange(lower, upper)
-        }
-
-        private fun strict(text: String): CampaignVersion? =
-            if (text.split(".").size == 3) CampaignVersion.parse(text) else null
-    }
+        version >= min && exclude.none { it == version }
 }

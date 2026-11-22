@@ -117,7 +117,8 @@ public data class Campaign(
     val title: String,
     val priority: Int,
     val platforms: List<String>,
-    val appVersion: Map<String, VersionRange>,
+    /** The resolved range per OS. An OS that is missing gets nothing. */
+    val appVersion: Map<String, ResolvedVersionRange>,
     val channels: List<String>,
     val startsAt: Long?,
     val endsAt: Long?,

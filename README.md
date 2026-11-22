@@ -22,6 +22,11 @@ on the same holdout side.
   returns the campaign to show, or each campaign's reason not to: stale set, unusable, inactive,
   no trigger, limits, device conditions, server conditions, holdout, priority, text and images.
   After waiting for a busy screen, `CampaignRules.recheck` looks at the set and the counts again
+- **Versions resolved for you.** You write what a campaign `requires` (feature keys), not version
+  ranges. Core resolves it per OS into the campaign's `app_version`: `{ "min": "3.3.0", "exclude": ["4.0.0"] }`
+  (the lowest version that has it, minus the versions that lack it). The device only checks its own
+  version against that range; an OS with no range, or a version that does not read, gets nothing
+  (outcome `inactive:app_version`)
 - **Typed events.** Props keep their types (`CampaignValue`): `3` and `3.0` are the same number, the
   string `"3"` is not, and comparing it is reported as `type_mismatch`
 - **Server facts asked last.** A fact from your own server is requested only after every device

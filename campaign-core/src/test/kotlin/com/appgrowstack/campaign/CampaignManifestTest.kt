@@ -40,7 +40,13 @@ class CampaignManifestTest {
     @Test
     fun versions() {
         assertEquals(CampaignVersion(3, 10, 0), CampaignVersion.parse("3.10"))
-        assertTrue(CampaignVersion.parse("4.0.0")!! !in VersionRange.parse(">=3.3.0 <4.0.0")!!)
-        assertEquals(null, VersionRange.parse("~>3.3"))
+        assertEquals(null, CampaignVersion.parseAppVersion("3"))
+        assertEquals(null, CampaignVersion.parseAppVersion("3.3.0.1"))
+        assertEquals(null, CampaignVersion.parseAppVersion("3.x"))
+        val range = ResolvedVersionRange(CampaignVersion(3, 3), listOf(CampaignVersion.parseAppVersion("4.0")!!))
+        assertTrue(CampaignVersion.parse("3.3")!! in range)
+        assertTrue(CampaignVersion.parse("4.0.0")!! !in range)
+        assertTrue(CampaignVersion.parse("4.0.1")!! in range)
+        assertTrue(CampaignVersion.parse("3.2.9")!! !in range)
     }
 }

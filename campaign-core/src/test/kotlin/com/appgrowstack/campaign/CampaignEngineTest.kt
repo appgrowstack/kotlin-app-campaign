@@ -425,7 +425,7 @@ class CampaignEngineTest {
     private fun surveySet(values: String = """{"question":{"ja":"今は Premium にしない理由は？"},"choice_1":{"ja":"値段"},"choice_2":{"ja":"まだ分からない"},"choice_3":{"ja":"ほか"},"free_text":true}""", trigger: String = "book_added"): String {
         val survey = Json.parseToJsonElement("""
             {"schema_version":1,"id":"survey-why-not-premium","type":"survey","status":"active","title":"理由を聞く","purpose":"理由",
-             "priority":40,"platforms":["ios","android"],"app_version":{"ios":">=3.3.0","android":">=3.3.0"},
+             "priority":40,"platforms":["ios","android"],"app_version":{"ios":{"min":"3.3.0","exclude":[]},"android":{"min":"3.3.0","exclude":[]}},
              "starts_at":null,"ends_at":null,
              "triggers":[{"id":"after","event":"$trigger","where":null,"wait_seconds":0}],
              "audience":null,
